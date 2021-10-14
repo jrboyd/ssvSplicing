@@ -54,6 +54,13 @@ suppa_joinFiles = function(input_files,
   }
 }
 
+get_tpm_files = function(wd){
+  dir(wd, pattern = ".tpm$", full.names = TRUE)
+}
+
+get_psi_files = function(wd){
+  dir(wd, pattern = paste0(psi, ".psi$"), full.names = TRUE)
+}
 
 #' Title
 #'
@@ -78,8 +85,8 @@ suppa_diffSplice = function(wd,
                             PSI_todo = unlist(SPLICE_EVENTS),
                             output_location = wd){
   for(psi in PSI_todo){
-    tpm_files = dir(wd, pattern = ".tpm$", full.names = TRUE)
-    psi_files = dir(wd, pattern = paste0(psi, ".psi$"), full.names = TRUE)
+    tpm_files = get_tpm_files(wd)
+    psi_files = get_psi_files(wd)
     if(psi != "isoform"){
       ref_file = dir(ref_location, pattern = paste0(psi, ".+ioe"), full.names = TRUE)
     }else{
@@ -118,68 +125,37 @@ suppa_diffSplice = function(wd,
 suppa_clusterEvents = function(wd,
                                PSI_todo = unlist(SPLICE_EVENTS),
                                output_location = wd){
-  # echo $loc
-  # dpsi=${diff_dir}/diffSplice_result_${loc}.dpsi
-  # psivec=${diff_dir}/diffSplice_result_${loc}.psivec
-  # sed -i 's/nan/1.0/g' ${dpsi}
-
-  a = read.table("suppa2_diff/diffSplice_result_A3.dpsi")
-  b = read.table("suppa2_diff/diffSplice_result_A3.psivec")
-  head(a)
-  library(ggplot2)
-  library(data.table)
-  a$is_nan = is.nan(a$test1.test2_dPSI)
-  is_nan_ids = rownames(a[a$is_nan,])
-  good_ids = setdiff(rownames(a), is_nan_ids)
-  length(is_nan_ids)
-  nrow(a)
-  a[a$is_nan,]$test1.test2_dPSI = 0
-  ggplot(a[good_ids,], aes(x = test1.test2_dPSI, y = test1.test2_p.val, color = is_nan)) +
-    geom_point()
-
-  head(b)
-  b[is_nan_ids,]
-  ggplot(b[is_nan_ids,], aes(x = test1_3, y = test1_4)) +
-    geom_point(alpha = .03)
-
-  ggplot(b[good_ids,], aes(x = test1_3, y = test1_4)) +
-    geom_point(alpha = .03)
-  bdt= as.data.table(b)
-  nbins = 50
-  bdt[, xbin := round(test1_3 *nbins)]
-  bdt[, ybin := round(test1_4 *nbins)]
-
-  bdt = bdt[, .N, .(xbin, ybin)]
-  bdt[order(N, decreasing = TRUE)][1:10]
-  bdt[is.nan(xbin)][order(N, decreasing = TRUE)][1:10]
-  bdt[is.nan(ybin)][order(N, decreasing = TRUE)][1:10]
-
-
-
-  # sed -i 's/nan/0.0/g' ${psivec}
-  # ls -lha $dpsi $psivec
-  # python ~/lab_bin/suppa.py clusterEvents --dpsi ${dpsi} --psivec ${psivec} --sig-threshold 0.1 --eps 0.05 --min-pts 20 --groups 1-3,4-6,7-9 -o clusterEvents_${loc}
   for(psi in PSI_todo){
     dpsi_file = file.path(wd, paste0("diffSplice_result_", psi, ".dpsi"))
     psivec_file = file.path(wd, paste0("diffSplice_result_", psi, ".psivec"))
+    dpsi_file.no_nan = paste0(sub(".dpsi", "", dpsi_file), ".no_nan.dpsi")
+    psivec_file.no_nan = paste0(sub(".psivec", "", psivec_file), ".no_nan.psivec")
+
     stopifnot(file.exists(dpsi_file))
     stopifnot(file.exists(psivec_file))
 
-    a = read.table(dpsi_file)
-    b = read.table(psivec_file)
+    dpsi_df.raw = read.table(dpsi_file)
+    psivec_df.raw = read.table(psivec_file)
 
-    is_nan_ids = rownames(a[a$is_nan,])
-    good_ids = setdiff(rownames(a), is_nan_ids)
+    good_ids = rownames(dpsi_df.raw[!is.nan(dpsi_df.raw$test1.test2_dPSI),])
 
-    write.table(a[good_ids,], paste0(sub(".dpsi", "", dpsi_file), ".no_nan.dpsi"), sep = "\t", quote = FALSE)
-    write.table(b[good_ids,], paste0(sub(".psivec", "", dpsi_file), ".no_nan.psivec"), sep = "\t", quote = FALSE)
+    write.table(dpsi_df.raw[good_ids,], dpsi_file.no_nan, sep = "\t", quote = FALSE)
+    write.table(psivec_df.raw[good_ids,], psivec_file.no_nan, sep = "\t", quote = FALSE)
 
-  out_root = file.path(output_location, paste0("clusterEvents_result_", psi))
-  cmd = paste0(SUPPA_PATH, " clusterEvents",
-               " --dpsi ", dpsi_file,
-               " --psivec ", psivec_file,
-               " --sig-threshold 0.1 --eps 0.05 --min-pts 20 ",
-               " --groups ", )
+    grps = sapply(strsplit(colnames(psivec_df.raw), "_"), function(x){
+      paste(x[-length(x)], collapse = "_")
+    })
+    ranges = sapply(unique(grps), function(x)range(which(x == grps)))
+    groups_str = paste(paste(ranges[1,], ranges[2,], sep = "-"), collapse = ",")
+    out_root = file.path(output_location, paste0("clusterEvents_result_", psi))
+    cmd = paste0(SUPPA_PATH, " clusterEvents",
+                 " --dpsi ", dpsi_file.no_nan,
+                 " --psivec ", psivec_file.no_nan,
+                 " --sig-threshold 0.1 --eps 0.05 --min-pts 20 ",
+                 " --groups ", groups_str,
+                 " -o clusterEvents_", psi)
+    message(cmd)
+    system(cmd)
   }
 }
 

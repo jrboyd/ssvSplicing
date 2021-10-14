@@ -15,12 +15,11 @@ names(SPLICE_EVENTS.REVERSE) = unlist(SPLICE_EVENTS)
 
 SUPPA_PATH = "/slipstream/home/joeboyd/anaconda2/envs/suppa2_env/bin/suppa.py"
 
-
-
 .onAttach <- function(libname, pkgname) {
   packageStartupMessage("Attaching ssvSplicing version ",
                         packageDescription("ssvSplicing")$Version, ".")
   SSV_SPLICE_EVENTS <<- SPLICE_EVENTS
   SSV_SPLICE_EVENTS.DECODE <<- SPLICE_EVENTS.DECODE
   SSV_SPLICE_EVENTS.REVERSE <<- SPLICE_EVENTS.REVERSE
+  SSV_SPLICE_EVENTS.REVERSE <<-  SUPPA_PATH
 }
