@@ -112,7 +112,7 @@ suppa_diffSplice = function(wd,
 #'
 #' @examples
 #' wd = "suppa2_diff"
-#' PSI_todo = unlist(SPLICE_EVENTS),
+#' PSI_todo = unlist(SSV_SPLICE_EVENTS)
 #' output_location = wd
 #' psi = PSI_todo[1]
 suppa_clusterEvents = function(wd,
@@ -162,6 +162,17 @@ suppa_clusterEvents = function(wd,
   for(psi in PSI_todo){
     dpsi_file = file.path(wd, paste0("diffSplice_result_", psi, ".dpsi"))
     psivec_file = file.path(wd, paste0("diffSplice_result_", psi, ".psivec"))
+    stopifnot(file.exists(dpsi_file))
+    stopifnot(file.exists(psivec_file))
+
+    a = read.table(dpsi_file)
+    b = read.table(psivec_file)
+
+    is_nan_ids = rownames(a[a$is_nan,])
+    good_ids = setdiff(rownames(a), is_nan_ids)
+
+    write.table(a[good_ids,], paste0(sub(".dpsi", "", dpsi_file), ".no_nan.dpsi"), sep = "\t", quote = FALSE)
+    write.table(b[good_ids,], paste0(sub(".psivec", "", dpsi_file), ".no_nan.psivec"), sep = "\t", quote = FALSE)
 
   out_root = file.path(output_location, paste0("clusterEvents_result_", psi))
   cmd = paste0(SUPPA_PATH, " clusterEvents",
