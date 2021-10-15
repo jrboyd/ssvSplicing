@@ -131,40 +131,70 @@ suppa_clusterEvents = function(wd,
                                PSI_todo = unlist(SPLICE_EVENTS),
                                output_location = wd){
   for(psi in PSI_todo){
-    dpsi_file = file.path(wd, paste0("diffSplice_result_", psi, ".dpsi"))
     psivec_file = file.path(wd, paste0("diffSplice_result_", psi, ".psivec"))
-    dpsi_file.no_nan = paste0(sub(".dpsi", "", dpsi_file), ".no_nan.dpsi")
-    psivec_file.no_nan = paste0(sub(".psivec", "", psivec_file), ".no_nan.psivec")
-
-    stopifnot(file.exists(dpsi_file))
     stopifnot(file.exists(psivec_file))
-
-    dpsi_df.raw = read.table(dpsi_file)
     psivec_df.raw = read.table(psivec_file)
 
-    good_ids = rownames(dpsi_df.raw[!is.nan(dpsi_df.raw$test1.test2_dPSI),])
 
-    write.table(dpsi_df.raw[good_ids,], dpsi_file.no_nan, sep = "\t", quote = FALSE)
-    write.table(psivec_df.raw[good_ids,], psivec_file.no_nan, sep = "\t", quote = FALSE)
+    all_dpsi_files = dir(wd, pattern = paste0("diffSplice_result_", psi, ".+dpsi"), full.names = TRUE)
+    stopifnot(all(file.exists(all_dpsi_files)))
+    for(dpsi_file in all_dpsi_files){
 
-    grps = sapply(strsplit(colnames(psivec_df.raw), "_"), function(x){
-      paste(x[-length(x)], collapse = "_")
-    })
-    ranges = sapply(unique(grps), function(x)range(which(x == grps)))
-    groups_str = paste(paste(ranges[1,], ranges[2,], sep = "-"), collapse = ",")
-    out_root = file.path(output_location, paste0("clusterEvents_result_", psi))
-    if(!file.exists(file.path(out_root, ".clustvec"))){
-      cmd = paste0(SUPPA_PATH, " clusterEvents",
-                   " --dpsi ", dpsi_file.no_nan,
-                   " --psivec ", psivec_file.no_nan,
-                   " --sig-threshold 0.1 --eps 0.05 --min-pts 20 ",
-                   " --groups ", groups_str,
-                   " -o ", out_root)
-      message(cmd)
-      system(paste0("bash ", get_wrap_script(), " ", cmd))
-    }else{
-      message("Skipping clusterEvents for ", out_root, ", output already exists.")
+      dpsi_df.raw = read.table(dpsi_file, header = TRUE, row.names = 1)
+
+      pair_str = sub("_dPSI", "", colnames(dpsi_df.raw)[1])
+      pair_a = strsplit(pair_str, "\\.")[[1]][1]
+      pair_b = strsplit(pair_str, "\\.")[[1]][2]
+
+      psivec_df.dpsi_matched = psivec_df.raw[, grepl(pair_a, colnames(psivec_df.raw)) | grepl(pair_b, colnames(psivec_df.raw))]
+
+      good_ids = rownames(dpsi_df.raw[!is.nan(dpsi_df.raw[[1]]),])
+      psivec_df.dpsi_matched[good_ids,]
+
+      dpsi_file.no_nan = paste0(sub(".dpsi", "", dpsi_file), ".", pair_a, ".", pair_b, ".no_nan.dpsi")
+      psivec_file.no_nan = paste0(sub(".psivec", "", psivec_file), ".", pair_a, ".", pair_b, ".no_nan.psivec")
+
+
+      write.table(dpsi_df.raw[good_ids,], dpsi_file.no_nan, sep = "\t", quote = FALSE)
+      write.table(psivec_df.dpsi_matched[good_ids,], psivec_file.no_nan, sep = "\t", quote = FALSE)
+
+      grps = sapply(strsplit(colnames(psivec_df.dpsi_matched), "_"), function(x){
+        paste(x[-length(x)], collapse = "_")
+      })
+
+      ranges = sapply(unique(grps), function(x)range(which(x == grps)))
+      groups_str = paste(paste(ranges[1,], ranges[2,], sep = "-"), collapse = ",")
+      out_root = file.path(output_location, paste0("clusterEvents_result_", psi))
+      if(!file.exists(file.path(out_root, ".clustvec"))){
+        cmd = paste0(SUPPA_PATH, " clusterEvents",
+                     " --dpsi ", dpsi_file.no_nan,
+                     " --psivec ", psivec_file.no_nan,
+                     " --sig-threshold 0.1 --eps 0.05 --min-pts 20 ",
+                     " --groups ", groups_str,
+                     " -o ", out_root)
+        message(cmd)
+        system(paste0("bash ", get_wrap_script(), " ", cmd))
+      }else{
+        message("Skipping clusterEvents for ", out_root, ", output already exists.")
+      }
     }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
   }
 }
