@@ -37,6 +37,7 @@ suppa_joinFiles = function(input_files,
   }
   message("Running joinFiles...")
   if(run_TPM){
+    message("tpm", "...")
     tpm_files = paste(file.path(input_files, "tpm.txt"), collapse = " ")
     out_file = file.path(output_location, paste0(output_name, ".tpm.tpm"))
     if(!file.exists(out_file)){
@@ -47,6 +48,7 @@ suppa_joinFiles = function(input_files,
     }
   }
   for(psi in PSI_todo){
+    message(psi, "...")
     psi_files = dir(input_files, pattern = paste0(psi, ".psi$"), full.names = TRUE)
     out_file = file.path(output_location, paste0(output_name, ".", psi, ".psi"))
     if(!file.exists(out_file)){
@@ -66,7 +68,7 @@ get_psi_files = function(wd, psi){
   dir(wd, pattern = paste0(psi, ".psi$"), full.names = TRUE)
 }
 
-#' Title
+#' suppa_diffSplice
 #'
 #' @param wd
 #' @param ref_location
@@ -78,7 +80,6 @@ get_psi_files = function(wd, psi){
 #' @examples
 #'
 #' wd = "suppa2_diff"
-#' tpm_files = dir(wd, pattern = ".tpm$", full.names = TRUE)
 #' ref_location = "~/indexes/HG38/SUPPA2"
 #' suppa_diffSplice(wd, ref_location)
 suppa_diffSplice = function(wd,
@@ -86,6 +87,7 @@ suppa_diffSplice = function(wd,
                             PSI_todo = unlist(SPLICE_EVENTS),
                             output_location = wd){
   for(psi in PSI_todo){
+    message(psi, "...")
     tpm_files = get_tpm_files(wd)
     psi_files = get_psi_files(wd, psi)
     if(psi != "isoform"){
@@ -109,7 +111,7 @@ suppa_diffSplice = function(wd,
   }
 }
 
-#' Title
+#' suppa_clusterEvents
 #'
 #' @param wd
 #' @param PSI_todo
@@ -120,14 +122,12 @@ suppa_diffSplice = function(wd,
 #'
 #' @examples
 #' wd = "suppa2_diff"
-#' PSI_todo = unlist(SSV_SPLICE_EVENTS)
-#' output_location = wd
-#' psi = PSI_todo[1]
 #' suppa_clusterEvents(wd)
 suppa_clusterEvents = function(wd,
                                PSI_todo = unlist(SPLICE_EVENTS),
                                output_location = wd){
   for(psi in PSI_todo){
+    message(psi, "...")
     psivec_file = file.path(wd, paste0("diffSplice_result_", psi, ".psivec"))
     stopifnot(file.exists(psivec_file))
     psivec_df.raw = read.table(psivec_file)
@@ -136,10 +136,9 @@ suppa_clusterEvents = function(wd,
     all_dpsi_files = dir(wd, pattern = paste0("diffSplice_result_", psi, "\\.dpsi"), full.names = TRUE)
     stopifnot(all(file.exists(all_dpsi_files)))
     for(dpsi_file in all_dpsi_files){
-
       dpsi_df.raw = read.table(dpsi_file, header = TRUE, row.names = 1)
-
       pair_str = sub("_dPSI", "", colnames(dpsi_df.raw)[1])
+      message("  ", pair_str)
       pair_a = strsplit(pair_str, "\\.")[[1]][1]
       pair_b = strsplit(pair_str, "\\.")[[1]][2]
 
@@ -178,23 +177,5 @@ suppa_clusterEvents = function(wd,
         message("Skipping clusterEvents for ", out_root, ", output already exists.")
       }
     }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
   }
 }
