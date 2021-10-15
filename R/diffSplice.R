@@ -1,3 +1,7 @@
+get_wrap_script = function(){
+  system.file("extdata/wrap_python.sh", package = "ssvSplicing")
+}
+
 #' suppa_joinFiles
 #'
 #' @param input_files
@@ -37,7 +41,7 @@ suppa_joinFiles = function(input_files,
     out_file = file.path(output_location, paste0(output_name, ".tpm.tpm"))
     if(!file.exists(out_file)){
       cmd = paste0(SUPPA_PATH, " joinFiles -f tpm -i ", tpm_files, " -o ", sub(".tpm$", "", out_file))
-      system(paste0("bash inst/extdata/wrap_python.sh", " ", cmd))
+      system(paste0("bash ", get_wrap_script(), " ", cmd))
     }else{
       message("Skipping ", out_file, " already exists.")
     }
@@ -47,9 +51,9 @@ suppa_joinFiles = function(input_files,
     out_file = file.path(output_location, paste0(output_name, ".", psi, ".psi"))
     if(!file.exists(out_file)){
       cmd = paste0(SUPPA_PATH, " joinFiles -f psi -i ", paste(psi_files, collapse = " "), " -o ", sub(".psi$", "", out_file))
-      system(paste0("bash inst/extdata/wrap_python.sh", " ", cmd))
+      system(paste0("bash ", get_wrap_script(), " ", cmd))
     }else{
-      message("Skipping ", out_file, " already exists.")
+      message("Skipping joinFiles for ", out_file, ", output already exists.")
     }
   }
 }
@@ -58,7 +62,7 @@ get_tpm_files = function(wd){
   dir(wd, pattern = ".tpm$", full.names = TRUE)
 }
 
-get_psi_files = function(wd){
+get_psi_files = function(wd, psi){
   dir(wd, pattern = paste0(psi, ".psi$"), full.names = TRUE)
 }
 
@@ -86,23 +90,23 @@ suppa_diffSplice = function(wd,
                             output_location = wd){
   for(psi in PSI_todo){
     tpm_files = get_tpm_files(wd)
-    psi_files = get_psi_files(wd)
+    psi_files = get_psi_files(wd, psi)
     if(psi != "isoform"){
       ref_file = dir(ref_location, pattern = paste0(psi, ".+ioe"), full.names = TRUE)
     }else{
       ref_file = dir(ref_location, pattern = ".+ioi", full.names = TRUE)
     }
     out_root = file.path(output_location, paste0("diffSplice_result_", psi))
-    if(!(file.exists(paste0(out_root, ".dpsi")) & file.exists(paste0(out_root, ".psivec")))){
+    if(!(file.exists(paste0(out_root, ".psivec")))){
       cmd = paste0(SUPPA_PATH, " diffSplice",
                    " -p ", paste(psi_files, collapse = " "),
                    " -e ", paste(tpm_files, collapse = " "),
                    " -i ", ref_file,
                    " -o ", out_root,
                    " -m empirical -a 1000 -l .05 -c")
-      system(paste0("bash inst/extdata/wrap_python.sh", " ", cmd))
+      system(paste0("bash ", get_wrap_script(), " ", cmd))
     }else{
-      message("Skipping ", out_root, " already exists.")
+      message("Skipping diffSplice for ", out_root, ", output already exists.")
     }
 
   }
@@ -122,6 +126,7 @@ suppa_diffSplice = function(wd,
 #' PSI_todo = unlist(SSV_SPLICE_EVENTS)
 #' output_location = wd
 #' psi = PSI_todo[1]
+#' suppa_clusterEvents(wd)
 suppa_clusterEvents = function(wd,
                                PSI_todo = unlist(SPLICE_EVENTS),
                                output_location = wd){
@@ -148,28 +153,18 @@ suppa_clusterEvents = function(wd,
     ranges = sapply(unique(grps), function(x)range(which(x == grps)))
     groups_str = paste(paste(ranges[1,], ranges[2,], sep = "-"), collapse = ",")
     out_root = file.path(output_location, paste0("clusterEvents_result_", psi))
-    cmd = paste0(SUPPA_PATH, " clusterEvents",
-                 " --dpsi ", dpsi_file.no_nan,
-                 " --psivec ", psivec_file.no_nan,
-                 " --sig-threshold 0.1 --eps 0.05 --min-pts 20 ",
-                 " --groups ", groups_str,
-                 " -o clusterEvents_", psi)
-    message(cmd)
-    system(cmd)
+    if(!file.exists(file.path(out_root, ".clustvec"))){
+      cmd = paste0(SUPPA_PATH, " clusterEvents",
+                   " --dpsi ", dpsi_file.no_nan,
+                   " --psivec ", psivec_file.no_nan,
+                   " --sig-threshold 0.1 --eps 0.05 --min-pts 20 ",
+                   " --groups ", groups_str,
+                   " -o ", out_root)
+      message(cmd)
+      system(paste0("bash ", get_wrap_script(), " ", cmd))
+    }else{
+      message("Skipping clusterEvents for ", out_root, ", output already exists.")
+    }
+
   }
 }
-
-# mkdir -p suppa2_diff
-#
-# echo tpm
-# python ~/lab_bin/suppa.py joinFiles -f tpm -i $(echo *18C*quant/tpm.txt) -o suppa2_diff/tpm_18C
-# python ~/lab_bin/suppa.py joinFiles -f tpm -i $(echo *25C*quant/tpm.txt) -o suppa2_diff/tpm_25C
-# python ~/lab_bin/suppa.py joinFiles -f tpm -i $(echo *30C*quant/tpm.txt) -o suppa2_diff/tpm_30C
-#
-#
-# for loc in A3 A5 AF AL MX RI SE isoform; do
-# echo $loc
-# python ~/lab_bin/suppa.py joinFiles -f psi -i $(echo *30C*quant/*${loc}.psi) -o suppa2_diff/${loc}_30C;
-# python ~/lab_bin/suppa.py joinFiles -f psi -i $(echo *25C*quant/*${loc}.psi) -o suppa2_diff/${loc}_25C;
-# python ~/lab_bin/suppa.py joinFiles -f psi -i $(echo *18C*quant/*${loc}.psi) -o suppa2_diff/${loc}_18C;
-# done
