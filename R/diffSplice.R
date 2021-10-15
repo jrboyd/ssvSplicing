@@ -79,9 +79,6 @@ get_psi_files = function(wd, psi){
 #'
 #' wd = "suppa2_diff"
 #' tpm_files = dir(wd, pattern = ".tpm$", full.names = TRUE)
-#' PSI_todo = unlist(SPLICE_EVENTS)
-#' psi = PSI_todo[[1]]
-#' psi_files = dir(wd, pattern = paste0(psi, ".psi$"), full.names = TRUE)
 #' ref_location = "~/indexes/HG38/SUPPA2"
 #' suppa_diffSplice(wd, ref_location)
 suppa_diffSplice = function(wd,
@@ -136,7 +133,7 @@ suppa_clusterEvents = function(wd,
     psivec_df.raw = read.table(psivec_file)
 
 
-    all_dpsi_files = dir(wd, pattern = paste0("diffSplice_result_", psi, ".+dpsi"), full.names = TRUE)
+    all_dpsi_files = dir(wd, pattern = paste0("diffSplice_result_", psi, "\\.dpsi"), full.names = TRUE)
     stopifnot(all(file.exists(all_dpsi_files)))
     for(dpsi_file in all_dpsi_files){
 
@@ -164,16 +161,19 @@ suppa_clusterEvents = function(wd,
 
       ranges = sapply(unique(grps), function(x)range(which(x == grps)))
       groups_str = paste(paste(ranges[1,], ranges[2,], sep = "-"), collapse = ",")
-      out_root = file.path(output_location, paste0("clusterEvents_result_", psi))
-      if(!file.exists(file.path(out_root, ".clustvec"))){
+      out_root = file.path(normalizePath(output_location), paste0("clusterEvents_result_", psi, ".", pair_a, ".", pair_b))
+      if(!file.exists(paste0(out_root, ".clustvec"))){
+        owd = getwd()
+        setwd(dirname(dpsi_file.no_nan))
         cmd = paste0(SUPPA_PATH, " clusterEvents",
-                     " --dpsi ", dpsi_file.no_nan,
-                     " --psivec ", psivec_file.no_nan,
+                     " --dpsi ", basename(dpsi_file.no_nan),
+                     " --psivec ", basename(psivec_file.no_nan),
                      " --sig-threshold 0.1 --eps 0.05 --min-pts 20 ",
                      " --groups ", groups_str,
                      " -o ", out_root)
         message(cmd)
         system(paste0("bash ", get_wrap_script(), " ", cmd))
+        setwd(owd)
       }else{
         message("Skipping clusterEvents for ", out_root, ", output already exists.")
       }
