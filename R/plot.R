@@ -104,10 +104,18 @@ plot_splice_heatmap = function(dtw, sel_sample, pdf_name, name, min_test_value =
 #' features = load_gtf("~/gencode.v36.annotation.gtf", gene_of_interest = "IKZF1")
 #'
 #' sp_sj_dt = load_splicing_from_SJ.out.tab_files(sj_files, view_gr = features$view_gr)
-#' sp_sj_dt.sel = sp_sj_dt[number_unique > 100]
+#' sp_sj_dt.sel = sp_sj_dt[number_unique > 5]
 #'
-#' plots = plot_view_pileup_and_splicing(sp_sj_dt.sel, bam_files[1:4], features$view_gr)
-plot_view_pileup_and_splicing = function(splice_dt, bam_files, view_gr, return_data = FALSE, pool_by = NULL, pool_FUN = sum, sample_sep = "\n"){
+#' plots = plot_view_pileup_and_splicing(sp_sj_dt.sel, bam_files[1:4], features$view_gr, exons_to_show = features$goi_exon_dt[transcript_id == "ENST00000331340.8"])
+plot_view_pileup_and_splicing = function(splice_dt, bam_files, view_gr,
+                                         plot_title = "",
+                                         splice_height_var = "number_unique",
+                                         return_data = FALSE,
+                                         pool_by = NULL,
+                                         pool_FUN = sum,
+                                         sample_sep = "\n",
+                                         exons_to_show = NULL,
+                                         win_size = 50){
   if(is.character(bam_files)){
     bam_qdt = data.table(file= bam_files)
     bam_qdt[, sample := sub(".Aligned.sortedByCoord.out.bam", "", basename(file))]
@@ -115,6 +123,25 @@ plot_view_pileup_and_splicing = function(splice_dt, bam_files, view_gr, return_d
     bam_qdt = bam_files
   }else{
     stop("bam_files must be character or data.frame")
+  }
+
+  #try to sync sample names
+  if(!any(splice_dt$sample == bam_qdt$sample)){
+    splice_samples = unique(splice_dt$sample)
+    k = sapply(splice_samples, function(x)which(grepl(x, bam_qdt$sample)))
+    splice_samples = splice_samples[lengths(k) > 0]
+    k = unlist(k[lengths(k) > 0])
+    splice_dt = splice_dt[sample %in% splice_samples]
+
+    if(nrow(splice_dt) > 0){
+      s2s = bam_qdt$sample[k]
+      names(s2s) = names(k)
+      splice_dt$sample = s2s[splice_dt$sample]
+    }else{
+      warning("Could not sync sample names between splice_dt and bam_files. Splicing arches will not be plotted.")
+    }
+
+
   }
 
   if(!is.null(pool_by)){
@@ -127,7 +154,6 @@ plot_view_pileup_and_splicing = function(splice_dt, bam_files, view_gr, return_d
   prof_dt = prof_dt[, .(y = sum(y)), .(x, seqnames, start, end, id, strand, sample)]
   prof_dt.add = prof_dt.add[, .(y = sum(y)), .(x, seqnames, start, end, id, strand, sample)]
 
-  browser()
   if(!is.null(pool_by)){
     new_sample_dt = unique(bam_qdt[, c(pool_by), with = FALSE])
     new_sample_dt$sample = apply(new_sample_dt, 1, function(x){paste(x, collapse = sample_sep)})
@@ -139,12 +165,11 @@ plot_view_pileup_and_splicing = function(splice_dt, bam_files, view_gr, return_d
     prof_dt.add = merge(prof_dt.add, new_sample_dt, by = pool_by)
   }
 
-  browser()
-  prof_dt = merge(sp_assign_dt, prof_dt, by = "sample")
-  prof_dt$sample = factor(prof_dt$sample, levels = levels(sp_assign_dt$sample))
-
-  prof_dt.add = merge(sp_assign_dt, prof_dt.add, by = "sample")
-  prof_dt.add$sample = factor(prof_dt.add$sample, levels = levels(sp_assign_dt$sample))
+  # prof_dt = merge(sp_assign_dt, prof_dt, by = "sample")
+  # prof_dt$sample = factor(prof_dt$sample, levels = levels(sp_assign_dt$sample))
+  #
+  # prof_dt.add = merge(sp_assign_dt, prof_dt.add, by = "sample")
+  # prof_dt.add$sample = factor(prof_dt.add$sample, levels = levels(sp_assign_dt$sample))
 
 
   agg_prof_dt = prof_dt#prof_dt[, .(y = mean(y)), .(cluster_id, x, id, strand, start, end)]
@@ -157,9 +182,9 @@ plot_view_pileup_and_splicing = function(splice_dt, bam_files, view_gr, return_d
   agg_prof_dt[, xgen := (start + end)/2]
   agg_prof_dt.add[, xgen := (start + end)/2]
 
-  anno_dt_pile = as.data.table(ex_basic)[, .(start, end)]
+  anno_dt_pile = as.data.table(exons_to_show)[, .(start, end)]
   anno_dt_pile$m = ""
-  anno_rng = agg_prof_dt.add[, .(ymin = 0, ymax = max(y)), .(cluster_id)]
+  anno_rng = agg_prof_dt.add[, .(ymin = 0, ymax = max(y)), .(sample)]
   anno_rng$m = ""
   anno_dt_pile = merge(anno_dt_pile, anno_rng, by = "m", allow.cartesian = TRUE)
 
@@ -172,13 +197,34 @@ plot_view_pileup_and_splicing = function(splice_dt, bam_files, view_gr, return_d
   }
 
   p_pileup = ggplot() +
-    geom_rect(data = anno_dt_pile, aes(xmin = start, xmax = end, ymin = ymin, ymax = ymax), fill = "lightgray", color = "lightgray") +
-    geom_ribbon(data = agg_prof_dt.add, aes(x = xgen, ymin = 0, ymax = y, group = paste(id, strand)), alpha = .2, fill = "dodgerblue2") +
+    geom_rect(data = anno_dt_pile,
+              aes(xmin = start,
+                  xmax = end,
+                  ymin = ymin,
+                  ymax = ymax),
+              fill = "lightgray",
+              color = "lightgray") +
+    geom_ribbon(data = agg_prof_dt.add,
+                aes(x = xgen,
+                    ymin = 0,
+                    ymax = y,
+                    group = paste(id, strand)),
+                alpha = .2,
+                fill = "dodgerblue2") +
     # geom_path(data = agg_prof_dt, aes(x = xgen, y = y, color = strand, group = paste(id, strand))) +
-    geom_ribbon(data = agg_prof_dt, aes(x = xgen, ymin = 0, ymax = y, group = paste(id, strand)), alpha = 1, fill = "dodgerblue2") +
-    geom_arch(GRanges(splice_dt), aes(height = value), color = "black") +
-    facet_grid(cluster_id~sample, scales = "free") + theme(panel.background = element_blank()) +
-    labs(title = name)
+    geom_ribbon(data = agg_prof_dt,
+                aes(x = xgen,
+                    ymin = 0,
+                    ymax = y,
+                    group = paste(id, strand)),
+                alpha = 1,
+                fill = "dodgerblue2") +
+    geom_arch(GRanges(splice_dt),
+              aes_string(height = splice_height_var),
+              color = "black") +
+    facet_grid(sample~., scales = "free") +
+    theme(panel.background = element_blank()) +
+    labs(title = plot_title)
 
   # ggsave(sub(".pdf", ".pileup.pdf", pdf_name), p_pileup, width = 12, height = 10)
 

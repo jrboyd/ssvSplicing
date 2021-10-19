@@ -8,10 +8,14 @@ plot_view_pileup_and_splicing(
   splice_dt,
   bam_files,
   view_gr,
+  plot_title = "",
+  splice_height_var = "number_unique",
   return_data = FALSE,
   pool_by = NULL,
   pool_FUN = sum,
-  sample_sep = "\\n"
+  sample_sep = "\\n",
+  exons_to_show = NULL,
+  win_size = 50
 )
 }
 \arguments{
@@ -36,5 +40,5 @@ features = load_gtf("~/gencode.v36.annotation.gtf", gene_of_interest = "IKZF1")
 sp_sj_dt = load_splicing_from_SJ.out.tab_files(sj_files, view_gr = features$view_gr)
 sp_sj_dt.sel = sp_sj_dt[number_unique > 100]
 
-plots = plot_view_pileup_and_splicing(sp_sj_dt.sel, bam_files[1:4], features$view_gr)
+plots = plot_view_pileup_and_splicing(sp_sj_dt.sel, bam_files[1:4], features$view_gr, exons_to_show = features$goi_exon_dt[transcript_id == "ENST00000331340.8"])
 }
