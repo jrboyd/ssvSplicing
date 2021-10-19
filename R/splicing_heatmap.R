@@ -79,10 +79,14 @@ plot_splice_heatmap = function(dtw, sel_sample, pdf_name, name, min_test_value =
   invisible(list(clust_dt = sp_clust_dt, agg_dt = sp_agg_dt, assign_dt = sp_assign_dt))
 }
 
-plot_splice_pileup = function(sel_prof_qdt, sp_agg_dt, ik_gr, sp_assign_dt, return_data = FALSE){
+plot_splice_pileup = function(sel_prof_qdt, sp_agg_dt, ik_gr, sp_assign_dt, return_data = FALSE, pool_by = NULL, pool_FUN = sum, sample_sep = "\n"){
   prof_gr = reduce(ik_gr)
   prof_gr = range(prof_gr)
   prof_gr = resize(prof_gr, 1.2*width(prof_gr), fix = "center")
+
+  if(!is.null(pool_by)){
+    stopifnot(pool_by %in% colnames(sel_prof_qdt))
+  }
 
   prof_dt = ssvFetchBam(sel_prof_qdt, prof_gr, win_size = win_size, return_data.table = TRUE, fragLens = NA)
   prof_dt.add = ssvFetchBam(sel_prof_qdt, prof_gr, win_size = win_size, return_data.table = TRUE, splice_strategy = "add", fragLens = NA)
@@ -90,7 +94,17 @@ plot_splice_pileup = function(sel_prof_qdt, sp_agg_dt, ik_gr, sp_assign_dt, retu
   prof_dt = prof_dt[, .(y = sum(y)), .(x, seqnames, start, end, id, strand, sample)]
   prof_dt.add = prof_dt.add[, .(y = sum(y)), .(x, seqnames, start, end, id, strand, sample)]
 
+  browser()
+  if(!is.null(pool_by)){
+    new_sample_dt = unique(sel_prof_qdt[, c(pool_by), with = FALSE])
+    new_sample_dt$sample = apply(new_sample_dt, 1, function(x){paste(x, collapse = sample_sep)})
 
+    prof_dt = prof_dt[, .(y = pool_FUN(y)), c("x", "seqnames", "start", "end", "id", "strand", pool_by)]
+    prof_dt.add = prof_dt.add[, .(y = pool_FUN(y)), c("x", "seqnames", "start", "end", "id", "strand", pool_by)]
+
+    prof_dt = merge(prof_dt, new_sample_dt, by = pool_by)
+    prof_dt.add = merge(prof_dt.add, new_sample_dt, by = pool_by)
+  }
 
   prof_dt = merge(sp_assign_dt, prof_dt, by = "sample")
   prof_dt$sample = factor(prof_dt$sample, levels = levels(sp_assign_dt$sample))
@@ -140,4 +154,153 @@ plot_splice_pileup = function(sel_prof_qdt, sp_agg_dt, ik_gr, sp_assign_dt, retu
 
   # ggsave(sub(".pdf", ".pileup_ex3b.pdf", pdf_name), p_pileup.3b4, width = 12, height = 10)
   return(p_pileup)
+}
+
+#' Title
+#'
+#' @param sj_dt
+#' @param bam_files
+#' @param view_gr
+#' @param max_span
+#'
+#' @return
+#' @export
+#'
+#' @examples
+#' options(mc.cores = 20)
+#' set.seed(0)
+#'
+#' # wd = "/slipstream/home/joeboyd/R/SF_Ikaros_splicing/data"
+#' wd = "/slipstream/home/dbgap/data/alignment_RNA-Seq/"
+#' sj_files = find_SJ.out.tab_files(wd)[1:10]
+#' bam_files = find_bam_files(wd)[1:10]
+#' features = load_gtf("~/gencode.v36.annotation.gtf", gene_of_interest = "IKZF1")
+#'
+#' sp_sj_dt = load_splicing_from_SJ.out.tab_files(sj_files, view_gr = features$view_gr)
+#' # sp_bam_dt = load_splicing_from_bam_files(bam_files, view_gr = features$view_gr)
+#' sp_sj_dt.sel = sp_sj_dt[number_unique > 400]
+#'
+#' plots = plot_sj_pileups(sp_sj_dt.sel, bam_files[1:4], features$view_gr)
+#' plots$assembled
+#'
+#' bam_qdt = data.table(file = bam_files[1:10], a = LETTERS[rep(c(1, 2), each = 5)], b = LETTERS[rep(c(3, 4), 5)])
+#' plot_sj_pileups(sp_sj_dt.sel, bam_qdt, features$view_gr, pool_by = c("a", "b"))
+plot_sj_pileups = function(sj_dt, bam_files, view_gr, max_span = 200, pool_by = NULL, pool_FUN = sum, sample_sep = "\n"){
+  gr_starts = GRanges(unique(sj_dt[, .(seqnames, start, end = start, strand)]))
+  gr_starts$id = paste("start", seq_along(gr_starts), sep = "_")
+  names(gr_starts) = start(gr_starts)
+
+  gr_ends = GRanges(unique(sj_dt[, .(seqnames, start = end, end, strand)]))
+  gr_ends$id = paste("end", seq_along(gr_ends), sep = "_")
+  names(gr_ends) = end(gr_ends)
+
+  sj_dt$start_id = gr_starts[as.character(sj_dt$start)]$id
+  sj_dt$end_id = gr_ends[as.character(sj_dt$end)]$id
+
+  if(is.character(bam_files)){
+    bam_qdt = data.table(file= bam_files)
+    bam_qdt[, sample := sub(".Aligned.sortedByCoord.out.bam", "", basename(file))]
+    bam_qdt[, sample_split := gsub("_", "\n", sample)]
+  }else if(is.data.frame(bam_files)){
+    bam_qdt = bam_files
+  }else{
+    stop("bam_files must be character or data.frame")
+  }
+
+  if(!is.null(pool_by)){
+    stopifnot(pool_by %in% colnames(bam_qdt))
+  }
+
+
+  message("Retrieving pileups at splice starts...")
+  prof_at_starts = ssvRecipes::ssvFetchBamPE.RNA(bam_qdt, resize(gr_starts, max_span*2, fix = "center"),
+                                                 target_strand = "both",
+                                                 return_data.table = TRUE,
+                                                 win_size = 1,
+                                                 n_region_splits = 20)
+
+  message("Retrieving pileups at splice ends...")
+  prof_at_ends = ssvRecipes::ssvFetchBamPE.RNA(bam_qdt, resize(gr_ends, max_span*2, fix = "center"),
+                                               target_strand = "both",
+                                               return_data.table = TRUE,
+                                               win_size = 1,
+                                               n_region_splits = 20)
+
+  if(!is.null(pool_by)){
+    new_sample_dt = unique(bam_qdt[, c(pool_by), with = FALSE])
+    new_sample_dt$sample = apply(new_sample_dt, 1, function(x){paste(x, collapse = sample_sep)})
+
+    prof_at_starts = prof_at_starts[, .(y = pool_FUN(y)), c("x", "seqnames", "start", "end", "id", "strand", pool_by)]
+    prof_at_ends = prof_at_ends[, .(y = pool_FUN(y)), c("x", "seqnames", "start", "end", "id", "strand", pool_by)]
+
+    prof_at_starts = merge(prof_at_starts, new_sample_dt, by = pool_by)
+    prof_at_ends = merge(prof_at_ends, new_sample_dt, by = pool_by)
+  }
+
+  plot_stuff = function(prof_at){
+    prof_at[, facet := paste(sample, strand)]
+
+    clust_dt = ssvSignalClustering(prof_at, facet_ = "facet", dcast_fill = 0, max_cols = Inf, max_rows = Inf)
+
+    pg_heat = cowplot::plot_grid(ncol = 1,
+                                 ssvSignalHeatmap(clust_dt[strand == "+"], fill_limits = c(0, 1e3), facet_ = "sample_split", max_cols = Inf) +
+                                   labs(title = "(+) strand") +
+                                   scale_x_continuous(breaks = c(-max_span, 0, max_span)) +
+                                   labs(fill = "reads", x = "bp", y = "splice junctions"),
+                                 ssvSignalHeatmap(clust_dt[strand == "-"], fill_limits = c(0, 1e3), facet_ = "sample_split", max_cols = Inf)  +
+                                   labs(title = "(-) strand") +
+                                   scale_x_continuous(breaks = c(-max_span, 0, max_span)) +
+                                   labs(fill = "reads", x = "bp", y = "splice junctions")
+    )
+
+    agg_dt = clust_dt[, .(y = mean(y)), .(x, cluster_id, sample, sample_split, strand)]
+    p_side = ggplot(agg_dt, aes(x = x, y = y, color = strand, group = strand)) +
+      geom_path() +
+      facet_grid(cluster_id~sample_split, scales= "free_y") +
+      geom_vline(xintercept = 0, color = "blue") +
+      scale_color_manual(values = c("-" = "red", "+" = "blue")) +
+      scale_x_continuous(breaks = c(-max_span, 0, max_span)) +
+      theme(axis.text.x = element_text(angle = 0, vjust = .5, hjust = 1)) +
+      labs(y = "mean reads", x= "bp") +
+      theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = .5))
+    list(heatmap = pg_heat, side = p_side, assign_dt = unique(clust_dt[, .(id, cluster_id)]))
+  }
+
+  set.seed(0)
+  plots_at_starts = plot_stuff(prof_at_starts)
+  plots_at_starts$side =  plots_at_starts$side + labs(title = "splice starts")
+  set.seed(0)
+  plots_at_ends = plot_stuff(prof_at_ends)
+  plots_at_ends$side =  plots_at_ends$side + labs(title = "splice starts")
+
+  plots_at_starts$assign_dt[cluster_id %in% c(2, 3)]
+  plots_at_ends$assign_dt[cluster_id %in% c(2, 3, 4, 5)]
+
+  pg_side_heatmap = cowplot::plot_grid(ncol = 1,
+                                       plots_at_starts$heatmap,
+                                       plots_at_ends$heatmap
+  )
+
+
+  pg_side_plots = cowplot::plot_grid(ncol = 1,
+                                     plots_at_starts$side,
+                                     plots_at_ends$side +
+                                       labs(title = "splice ends")
+  )
+
+  pg_assembled = cowplot::plot_grid(nrow = 1,
+                                    pg_side_heatmap,
+                                    pg_side_plots)
+  invisible(list(
+    plots = list(
+      starts_heatmap = plots_at_starts$heatmap,
+      ends_heatmap = plots_at_ends$heatmap,
+      starts_sideplot = plots_at_starts$side,
+      ends_sideplot = plots_at_ends$side
+
+    ),
+    side_plots = pg_side_plots,
+    heatmaps = pg_side_heatmap,
+    assembled = pg_assembled
+  ))
 }

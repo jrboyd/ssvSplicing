@@ -7,7 +7,7 @@ strand_cols = c("-" = "red", "+" = "black")
 # #plots some extra green circles, implemented to look at anti sense gene that looked interesting
 # additional_transcript = "ENST00000644669.1"
 
-#' Title
+#' filter_readable
 #'
 #' @param f
 #'
@@ -20,7 +20,7 @@ filter_readable= function(f){
   f
 }
 
-#' Title
+#' load_gtf
 #'
 #' @param gtf_file
 #' @param gene_of_interest
@@ -30,8 +30,19 @@ filter_readable= function(f){
 #' @importFrom rtracklayer import.gff
 #'
 #' @examples
+#' gtf_file = "/slipstream/home/joeboyd/indexes/DM6/GTF/dm6.ensGene.gtf"
+#' goi = "FBgn0029137"
+#' ref_info = load_gtf(gtf_file, goi)
+#' #or if you already have exon annotatation loaded, this is much faster
+#' ref_info.faster = load_gtf(ref_info$ex_gr, goi)
 load_gtf = function(gtf_file, gene_of_interest){
-  ex_gr = rtracklayer::import.gff("~/gencode.v35.annotation.gtf.gz", feature.type = "exon", format = "gtf")
+  if(is(gtf_file, "GRanges")){
+    ex_gr = gtf_file
+  }else{
+    stopifnot(file.exists(gtf_file))
+    ex_gr = rtracklayer::import.gff(gtf_file, feature.type = "exon", format = "gtf")
+  }
+
   ik_gr = subset(ex_gr, gene_name == gene_of_interest)
   ik_dt = as.data.table(ik_gr)
   tx_widths = ik_dt[, .(total_width = sum(end - start)), .(transcript_id)]
@@ -45,7 +56,7 @@ load_gtf = function(gtf_file, gene_of_interest){
 
 
 
-#' Title
+#' load_splicing_from_bam_files
 #'
 #' @param bam_files
 #'
@@ -85,7 +96,7 @@ load_sj = function(f, view_gr, file_ext = ".SJ.out.tab"){
   dt_sj
 }
 
-#' Title
+#' find_SJ.out.tab_files
 #'
 #' @param wd
 #'
@@ -99,7 +110,7 @@ find_SJ.out.tab_files = function(wd){
   sj_files
 }
 
-#' Title
+#' find_bam_files
 #'
 #' @param wd
 #'
@@ -114,7 +125,7 @@ find_bam_files = function(wd){
 }
 
 
-#' Title
+#' load_splicing_from_SJ.out.tab_files
 #'
 #' @param sj_files
 #' @param view_gr
