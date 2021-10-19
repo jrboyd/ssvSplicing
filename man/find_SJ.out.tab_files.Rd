@@ -2,7 +2,7 @@
 % Please edit documentation in R/load.R
 \name{find_SJ.out.tab_files}
 \alias{find_SJ.out.tab_files}
-\title{Title}
+\title{find_SJ.out.tab_files}
 \usage{
 find_SJ.out.tab_files(wd)
 }
@@ -13,5 +13,5 @@ find_SJ.out.tab_files(wd)
 
 }
 \description{
-Title
+find_SJ.out.tab_files
 }

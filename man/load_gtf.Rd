@@ -2,7 +2,7 @@
 % Please edit documentation in R/load.R
 \name{load_gtf}
 \alias{load_gtf}
-\title{Title}
+\title{load_gtf}
 \usage{
 load_gtf(gtf_file, gene_of_interest)
 }
@@ -13,5 +13,12 @@ load_gtf(gtf_file, gene_of_interest)
 
 }
 \description{
-Title
+load_gtf
+}
+\examples{
+gtf_file = "/slipstream/home/joeboyd/indexes/DM6/GTF/dm6.ensGene.gtf"
+goi = "FBgn0029137"
+ref_info = load_gtf(gtf_file, goi)
+#or if you already have exon annotatation loaded, this is much faster
+ref_info.faster = load_gtf(ref_info$ex_gr, goi)
 }

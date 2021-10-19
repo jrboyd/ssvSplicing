@@ -2,7 +2,7 @@
 % Please edit documentation in R/diffSplice.R
 \name{suppa_diffSplice}
 \alias{suppa_diffSplice}
-\title{Title}
+\title{suppa_diffSplice}
 \usage{
 suppa_diffSplice(
   wd,
@@ -18,15 +18,11 @@ suppa_diffSplice(
 
 }
 \description{
-Title
+suppa_diffSplice
 }
 \examples{
 
 wd = "suppa2_diff"
-tpm_files = dir(wd, pattern = ".tpm$", full.names = TRUE)
-PSI_todo = unlist(SPLICE_EVENTS)
-psi = PSI_todo[[1]]
-psi_files = dir(wd, pattern = paste0(psi, ".psi$"), full.names = TRUE)
 ref_location = "~/indexes/HG38/SUPPA2"
 suppa_diffSplice(wd, ref_location)
 }

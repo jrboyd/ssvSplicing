@@ -2,7 +2,7 @@
 % Please edit documentation in R/load.R
 \name{load_splicing_from_bam_files}
 \alias{load_splicing_from_bam_files}
-\title{Title}
+\title{load_splicing_from_bam_files}
 \usage{
 load_splicing_from_bam_files(
   bam_files,
@@ -17,5 +17,5 @@ load_splicing_from_bam_files(
 
 }
 \description{
-Title
+load_splicing_from_bam_files
 }

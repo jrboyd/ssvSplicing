@@ -2,7 +2,7 @@
 % Please edit documentation in R/diffSplice.R
 \name{suppa_clusterEvents}
 \alias{suppa_clusterEvents}
-\title{Title}
+\title{suppa_clusterEvents}
 \usage{
 suppa_clusterEvents(wd, PSI_todo = unlist(SPLICE_EVENTS), output_location = wd)
 }
@@ -13,12 +13,9 @@ suppa_clusterEvents(wd, PSI_todo = unlist(SPLICE_EVENTS), output_location = wd)
 
 }
 \description{
-Title
+suppa_clusterEvents
 }
 \examples{
 wd = "suppa2_diff"
-PSI_todo = unlist(SSV_SPLICE_EVENTS)
-output_location = wd
-psi = PSI_todo[1]
 suppa_clusterEvents(wd)
 }

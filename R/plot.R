@@ -48,17 +48,17 @@ plot_splice_heatmap = function(dtw, sel_sample, pdf_name, name, min_test_value =
   toplot_id = as.character(sel_dtw[, sum(fraction > 0) >= .3*n_samples, id][V1 == TRUE]$id)
   p_sp_heat = ssvSignalHeatmap(sp_clust_dt[id %in% toplot_id], row_ = "sample", column_ = "id", fill_ = "fraction", facet_ = "", dcast_fill = 0, max_cols = Inf, nclust = 3)
 
-  sp_agg_dt = sp_clust_dt[, .(fraction = mean(fraction), value = mean(value)), .(seqnames, start, end, strand, id, cluster_id)]
+  splice_dt.agg = sp_clust_dt[, .(fraction = mean(fraction), value = mean(value)), .(seqnames, start, end, strand, id, cluster_id)]
 
   anno_dt_clust = as.data.table(ex_basic)[, .(start, end)]
   anno_dt_clust$m = ""
-  anno_rng = sp_agg_dt[, .(ymin = 0, ymax = max(fraction)), .(cluster_id)]
+  anno_rng = splice_dt.agg[, .(ymin = 0, ymax = max(fraction)), .(cluster_id)]
   anno_rng$m = ""
   anno_dt_clust = merge(anno_dt_clust, anno_rng, by = "m", allow.cartesian = TRUE)
 
   p_sp_arch = ggplot() +
     geom_rect(data = anno_dt_clust, aes(xmin = start, xmax = end, ymin = ymin, ymax = ymax), color = "gray", fill = "gray", size = .2) +
-    geom_arch(GRanges(sp_agg_dt), aes(height = fraction, color = strand)) +
+    geom_arch(GRanges(splice_dt.agg), aes(height = fraction, color = strand)) +
     facet_grid(cluster_id~., scales = "free_y") +
     scale_color_manual(values = strand_cols) +
     labs(y = "fraction") +
@@ -76,27 +76,60 @@ plot_splice_heatmap = function(dtw, sel_sample, pdf_name, name, min_test_value =
 
   sp_assign_dt = unique(sp_clust_dt[, .(cluster_id, sample)])
 
-  invisible(list(clust_dt = sp_clust_dt, agg_dt = sp_agg_dt, assign_dt = sp_assign_dt))
+  invisible(list(clust_dt = sp_clust_dt, agg_dt = splice_dt.agg, assign_dt = sp_assign_dt))
 }
 
-plot_splice_pileup = function(sel_prof_qdt, sp_agg_dt, ik_gr, sp_assign_dt, return_data = FALSE, pool_by = NULL, pool_FUN = sum, sample_sep = "\n"){
-  prof_gr = reduce(ik_gr)
-  prof_gr = range(prof_gr)
-  prof_gr = resize(prof_gr, 1.2*width(prof_gr), fix = "center")
-
-  if(!is.null(pool_by)){
-    stopifnot(pool_by %in% colnames(sel_prof_qdt))
+#' plot_view_pileup_and_splicing
+#'
+#' @param bam_qdt
+#' @param splice_dt
+#' @param ik_gr
+#' @param sp_assign_dt
+#' @param return_data
+#' @param pool_by
+#' @param pool_FUN
+#' @param sample_sep
+#'
+#' @return
+#' @export
+#'
+#' @examples
+#' options(mc.cores = 20)
+#' set.seed(0)
+#'
+#' # wd = "/slipstream/home/joeboyd/R/SF_Ikaros_splicing/data"
+#' wd = "/slipstream/home/dbgap/data/alignment_RNA-Seq/"
+#' sj_files = find_SJ.out.tab_files(wd)[1:10]
+#' bam_files = find_bam_files(wd)[1:10]
+#' features = load_gtf("~/gencode.v36.annotation.gtf", gene_of_interest = "IKZF1")
+#'
+#' sp_sj_dt = load_splicing_from_SJ.out.tab_files(sj_files, view_gr = features$view_gr)
+#' sp_sj_dt.sel = sp_sj_dt[number_unique > 100]
+#'
+#' plots = plot_view_pileup_and_splicing(sp_sj_dt.sel, bam_files[1:4], features$view_gr)
+plot_view_pileup_and_splicing = function(splice_dt, bam_files, view_gr, return_data = FALSE, pool_by = NULL, pool_FUN = sum, sample_sep = "\n"){
+  if(is.character(bam_files)){
+    bam_qdt = data.table(file= bam_files)
+    bam_qdt[, sample := sub(".Aligned.sortedByCoord.out.bam", "", basename(file))]
+  }else if(is.data.frame(bam_files)){
+    bam_qdt = bam_files
+  }else{
+    stop("bam_files must be character or data.frame")
   }
 
-  prof_dt = ssvFetchBam(sel_prof_qdt, prof_gr, win_size = win_size, return_data.table = TRUE, fragLens = NA)
-  prof_dt.add = ssvFetchBam(sel_prof_qdt, prof_gr, win_size = win_size, return_data.table = TRUE, splice_strategy = "add", fragLens = NA)
+  if(!is.null(pool_by)){
+    stopifnot(pool_by %in% colnames(bam_qdt))
+  }
+
+  prof_dt = ssvFetchBam(bam_qdt, view_gr, win_size = win_size, return_data.table = TRUE, fragLens = NA)
+  prof_dt.add = ssvFetchBam(bam_qdt, view_gr, win_size = win_size, return_data.table = TRUE, splice_strategy = "add", fragLens = NA)
 
   prof_dt = prof_dt[, .(y = sum(y)), .(x, seqnames, start, end, id, strand, sample)]
   prof_dt.add = prof_dt.add[, .(y = sum(y)), .(x, seqnames, start, end, id, strand, sample)]
 
   browser()
   if(!is.null(pool_by)){
-    new_sample_dt = unique(sel_prof_qdt[, c(pool_by), with = FALSE])
+    new_sample_dt = unique(bam_qdt[, c(pool_by), with = FALSE])
     new_sample_dt$sample = apply(new_sample_dt, 1, function(x){paste(x, collapse = sample_sep)})
 
     prof_dt = prof_dt[, .(y = pool_FUN(y)), c("x", "seqnames", "start", "end", "id", "strand", pool_by)]
@@ -106,6 +139,7 @@ plot_splice_pileup = function(sel_prof_qdt, sp_agg_dt, ik_gr, sp_assign_dt, retu
     prof_dt.add = merge(prof_dt.add, new_sample_dt, by = pool_by)
   }
 
+  browser()
   prof_dt = merge(sp_assign_dt, prof_dt, by = "sample")
   prof_dt$sample = factor(prof_dt$sample, levels = levels(sp_assign_dt$sample))
 
@@ -113,8 +147,8 @@ plot_splice_pileup = function(sel_prof_qdt, sp_agg_dt, ik_gr, sp_assign_dt, retu
   prof_dt.add$sample = factor(prof_dt.add$sample, levels = levels(sp_assign_dt$sample))
 
 
-  agg_prof_dt = prof_dt[, .(y = mean(y)), .(cluster_id, x, id, strand, start, end)]
-  agg_prof_dt.add = prof_dt.add[, .(y = mean(y)), .(cluster_id, x, id, strand, start, end)]
+  agg_prof_dt = prof_dt#prof_dt[, .(y = mean(y)), .(cluster_id, x, id, strand, start, end)]
+  agg_prof_dt.add = prof_dt.add#prof_dt.add[, .(y = mean(y)), .(cluster_id, x, id, strand, start, end)]
 
   # ggplot(agg_prof_dt, aes(x = x, y = y, color = strand)) +
   #   geom_path() +
@@ -133,7 +167,7 @@ plot_splice_pileup = function(sel_prof_qdt, sp_agg_dt, ik_gr, sp_assign_dt, retu
     return(list(
       annotation = anno_dt_pile,
       pileup = agg_prof_dt,
-      splicing = sp_agg_dt
+      splicing = splice_dt
     ))
   }
 
@@ -142,8 +176,8 @@ plot_splice_pileup = function(sel_prof_qdt, sp_agg_dt, ik_gr, sp_assign_dt, retu
     geom_ribbon(data = agg_prof_dt.add, aes(x = xgen, ymin = 0, ymax = y, group = paste(id, strand)), alpha = .2, fill = "dodgerblue2") +
     # geom_path(data = agg_prof_dt, aes(x = xgen, y = y, color = strand, group = paste(id, strand))) +
     geom_ribbon(data = agg_prof_dt, aes(x = xgen, ymin = 0, ymax = y, group = paste(id, strand)), alpha = 1, fill = "dodgerblue2") +
-    geom_arch(GRanges(sp_agg_dt), aes(height = value), color = "black") +
-    facet_grid(cluster_id~., scales = "free") + theme(panel.background = element_blank()) +
+    geom_arch(GRanges(splice_dt), aes(height = value), color = "black") +
+    facet_grid(cluster_id~sample, scales = "free") + theme(panel.background = element_blank()) +
     labs(title = name)
 
   # ggsave(sub(".pdf", ".pileup.pdf", pdf_name), p_pileup, width = 12, height = 10)
@@ -156,7 +190,7 @@ plot_splice_pileup = function(sel_prof_qdt, sp_agg_dt, ik_gr, sp_assign_dt, retu
   return(p_pileup)
 }
 
-#' Title
+#' plot_sj_pileups
 #'
 #' @param sj_dt
 #' @param bam_files
@@ -178,13 +212,13 @@ plot_splice_pileup = function(sel_prof_qdt, sp_agg_dt, ik_gr, sp_assign_dt, retu
 #'
 #' sp_sj_dt = load_splicing_from_SJ.out.tab_files(sj_files, view_gr = features$view_gr)
 #' # sp_bam_dt = load_splicing_from_bam_files(bam_files, view_gr = features$view_gr)
-#' sp_sj_dt.sel = sp_sj_dt[number_unique > 400]
+#' sp_sj_dt.sel = sp_sj_dt[number_unique > 100]
 #'
 #' plots = plot_sj_pileups(sp_sj_dt.sel, bam_files[1:4], features$view_gr)
 #' plots$assembled
 #'
 #' bam_qdt = data.table(file = bam_files[1:10], a = LETTERS[rep(c(1, 2), each = 5)], b = LETTERS[rep(c(3, 4), 5)])
-#' plot_sj_pileups(sp_sj_dt.sel, bam_qdt, features$view_gr, pool_by = c("a", "b"))
+#' plots.pooled = plot_sj_pileups(sp_sj_dt.sel, bam_qdt, features$view_gr, pool_by = c("a", "b"))
 plot_sj_pileups = function(sj_dt, bam_files, view_gr, max_span = 200, pool_by = NULL, pool_FUN = sum, sample_sep = "\n"){
   gr_starts = GRanges(unique(sj_dt[, .(seqnames, start, end = start, strand)]))
   gr_starts$id = paste("start", seq_along(gr_starts), sep = "_")
@@ -200,7 +234,6 @@ plot_sj_pileups = function(sj_dt, bam_files, view_gr, max_span = 200, pool_by = 
   if(is.character(bam_files)){
     bam_qdt = data.table(file= bam_files)
     bam_qdt[, sample := sub(".Aligned.sortedByCoord.out.bam", "", basename(file))]
-    bam_qdt[, sample_split := gsub("_", "\n", sample)]
   }else if(is.data.frame(bam_files)){
     bam_qdt = bam_files
   }else{
@@ -243,20 +276,20 @@ plot_sj_pileups = function(sj_dt, bam_files, view_gr, max_span = 200, pool_by = 
     clust_dt = ssvSignalClustering(prof_at, facet_ = "facet", dcast_fill = 0, max_cols = Inf, max_rows = Inf)
 
     pg_heat = cowplot::plot_grid(ncol = 1,
-                                 ssvSignalHeatmap(clust_dt[strand == "+"], fill_limits = c(0, 1e3), facet_ = "sample_split", max_cols = Inf) +
+                                 ssvSignalHeatmap(clust_dt[strand == "+"], fill_limits = c(0, 1e3), facet_ = "sample", max_cols = Inf) +
                                    labs(title = "(+) strand") +
                                    scale_x_continuous(breaks = c(-max_span, 0, max_span)) +
                                    labs(fill = "reads", x = "bp", y = "splice junctions"),
-                                 ssvSignalHeatmap(clust_dt[strand == "-"], fill_limits = c(0, 1e3), facet_ = "sample_split", max_cols = Inf)  +
+                                 ssvSignalHeatmap(clust_dt[strand == "-"], fill_limits = c(0, 1e3), facet_ = "sample", max_cols = Inf)  +
                                    labs(title = "(-) strand") +
                                    scale_x_continuous(breaks = c(-max_span, 0, max_span)) +
                                    labs(fill = "reads", x = "bp", y = "splice junctions")
     )
 
-    agg_dt = clust_dt[, .(y = mean(y)), .(x, cluster_id, sample, sample_split, strand)]
+    agg_dt = clust_dt[, .(y = mean(y)), .(x, cluster_id, sample, sample, strand)]
     p_side = ggplot(agg_dt, aes(x = x, y = y, color = strand, group = strand)) +
       geom_path() +
-      facet_grid(cluster_id~sample_split, scales= "free_y") +
+      facet_grid(cluster_id~sample, scales= "free_y") +
       geom_vline(xintercept = 0, color = "blue") +
       scale_color_manual(values = c("-" = "red", "+" = "blue")) +
       scale_x_continuous(breaks = c(-max_span, 0, max_span)) +
@@ -276,9 +309,13 @@ plot_sj_pileups = function(sj_dt, bam_files, view_gr, max_span = 200, pool_by = 
   plots_at_starts$assign_dt[cluster_id %in% c(2, 3)]
   plots_at_ends$assign_dt[cluster_id %in% c(2, 3, 4, 5)]
 
-  pg_side_heatmap = cowplot::plot_grid(ncol = 1,
-                                       plots_at_starts$heatmap,
-                                       plots_at_ends$heatmap
+  pg_side_heatmap = cowplot::plot_grid(nrow = 1,
+                                       cowplot::plot_grid(ncol = 1, rel_heights = c(1, 10),
+                                                          ggplot() + theme_void() + cowplot::draw_text("Splice Site Starts"),
+                                                          plots_at_starts$heatmap),
+                                       cowplot::plot_grid(ncol = 1, rel_heights = c(1, 10),
+                                                          ggplot() + theme_void() + cowplot::draw_text("Splice Site Ends"),
+                                                          plots_at_ends$heatmap)
   )
 
 

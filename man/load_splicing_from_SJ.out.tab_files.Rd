@@ -2,7 +2,7 @@
 % Please edit documentation in R/load.R
 \name{load_splicing_from_SJ.out.tab_files}
 \alias{load_splicing_from_SJ.out.tab_files}
-\title{Title}
+\title{load_splicing_from_SJ.out.tab_files}
 \usage{
 load_splicing_from_SJ.out.tab_files(sj_files, view_gr)
 }
@@ -13,5 +13,5 @@ load_splicing_from_SJ.out.tab_files(sj_files, view_gr)
 
 }
 \description{
-Title
+load_splicing_from_SJ.out.tab_files
 }

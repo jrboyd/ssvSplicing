@@ -2,7 +2,7 @@
 % Please edit documentation in R/load.R
 \name{find_bam_files}
 \alias{find_bam_files}
-\title{Title}
+\title{find_bam_files}
 \usage{
 find_bam_files(wd)
 }
@@ -13,5 +13,5 @@ find_bam_files(wd)
 
 }
 \description{
-Title
+find_bam_files
 }

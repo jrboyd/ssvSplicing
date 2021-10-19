@@ -2,7 +2,7 @@
 % Please edit documentation in R/load.R
 \name{filter_readable}
 \alias{filter_readable}
-\title{Title}
+\title{filter_readable}
 \usage{
 filter_readable(f)
 }
@@ -13,5 +13,5 @@ filter_readable(f)
 
 }
 \description{
-Title
+filter_readable
 }
