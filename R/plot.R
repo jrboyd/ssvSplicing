@@ -107,10 +107,29 @@ plot_splice_heatmap = function(dtw, sel_sample, pdf_name, name, min_test_value =
 #' sp_sj_dt.sel = sp_sj_dt[number_unique > 5]
 #'
 #' plots = plot_view_pileup_and_splicing(sp_sj_dt.sel, bam_files[1:4], features$view_gr, exons_to_show = features$goi_exon_dt[transcript_id == "ENST00000331340.8"])
-plot_view_pileup_and_splicing = function(splice_dt, bam_files, view_gr,
+#'
+#' bam_qdt = data.table(file = bam_files)
+#' bam_qdt[, sample := sub(".Aligned.sorted.+", "", basename(file))]
+#'
+#' anno_dt = unique(sp_sj_dt.sel[, .(sample)])
+#' anno_dt$group = rep(c("a", "b"), each = 5)
+#' anno_dt$group2 = rep(c("c", "d"), 5)
+#' debug(plot_view_pileup_and_splicing)
+#'
+#' plots = plot_view_pileup_and_splicing(sp_sj_dt.sel, bam_files[1:4], features$view_gr,
+#'   exons_to_show = features$goi_exon_dt[transcript_id == "ENST00000331340.8"])
+#'
+#' plots.pooled = plot_view_pileup_and_splicing(sp_sj_dt.sel, bam_qdt[1:4,], features$view_gr,
+#'   anno_dt = anno_dt,
+#'   pool_by = c("group", "group2"),
+#'   exons_to_show = features$goi_exon_dt[transcript_id == "ENST00000331340.8"])
+plot_view_pileup_and_splicing = function(splice_dt,
+                                         bam_files,
+                                         view_gr,
                                          plot_title = "",
                                          splice_height_var = "number_unique",
                                          return_data = FALSE,
+                                         anno_dt = NULL,
                                          pool_by = NULL,
                                          pool_FUN = sum,
                                          sample_sep = "\n",
@@ -126,9 +145,10 @@ plot_view_pileup_and_splicing = function(splice_dt, bam_files, view_gr,
   }
 
   #try to sync sample names
-  if(!any(splice_dt$sample == bam_qdt$sample)){
+  if(!all(splice_dt$sample %in% bam_qdt$sample)){
     splice_samples = unique(splice_dt$sample)
     k = sapply(splice_samples, function(x)which(grepl(x, bam_qdt$sample)))
+    if(any(lengths(k) > 1)){stop("cannot map splice_dt sample names uniquely to bam_qdt sample names (basename of bam_files).")}
     splice_samples = splice_samples[lengths(k) > 0]
     k = unlist(k[lengths(k) > 0])
     splice_dt = splice_dt[sample %in% splice_samples]
@@ -145,7 +165,16 @@ plot_view_pileup_and_splicing = function(splice_dt, bam_files, view_gr,
   }
 
   if(!is.null(pool_by)){
-    stopifnot(pool_by %in% colnames(bam_qdt))
+    if(is.null(anno_dt)){
+      stop("Need anno_dt to provided sample metadata.")
+    }
+    stopifnot(pool_by %in% colnames(anno_dt))
+    if(!all(bam_qdt$sample %in% anno_dt$sample)){
+      stop(paste0(
+        "Some sample do not have metadata in anno_dt:\n ",
+        paste(setdiff(bam_qdt$sample, anno_dt$sample), collapse = "\n ")
+        ))
+    }
   }
 
   prof_dt = ssvFetchBam(bam_qdt, view_gr, win_size = win_size, return_data.table = TRUE, fragLens = NA)
@@ -155,22 +184,29 @@ plot_view_pileup_and_splicing = function(splice_dt, bam_files, view_gr,
   prof_dt.add = prof_dt.add[, .(y = sum(y)), .(x, seqnames, start, end, id, strand, sample)]
 
   if(!is.null(pool_by)){
-    new_sample_dt = unique(bam_qdt[, c(pool_by), with = FALSE])
+    browser()
+    new_sample_dt = unique(anno_dt[, c(pool_by), with = FALSE])
     new_sample_dt$sample = apply(new_sample_dt, 1, function(x){paste(x, collapse = sample_sep)})
 
-    prof_dt = prof_dt[, .(y = pool_FUN(y)), c("x", "seqnames", "start", "end", "id", "strand", pool_by)]
-    prof_dt.add = prof_dt.add[, .(y = pool_FUN(y)), c("x", "seqnames", "start", "end", "id", "strand", pool_by)]
+    prof_dt
+    prof_dt.add
+    splice_dt
+    anno_dt
 
-    prof_dt = merge(prof_dt, new_sample_dt, by = pool_by)
-    prof_dt.add = merge(prof_dt.add, new_sample_dt, by = pool_by)
+    prep_attributes = function(.dt, .anno_dt, .new_sample_dt, y_var = "y"){
+      for(ko in setdiff(intersect(colnames(.dt), colnames(.anno_dt)), "sample")){
+        .dt[[ko]] = NULL
+      }
+      .dt = merge(.dt, .anno_dt, by = "sample")
+      .pool_by = intersect(colnames(.dt), c("x", "seqnames", "start", "end", "id", "strand", pool_by))
+      .dt = .dt[, .(y_ = pool_FUN(get(y_var))), .pool_by]
+      setnames(.dt, "y_", y_var)
+      merge(.dt, .new_sample_dt, by = pool_by)
+    }
+    prof_dt = prep_attributes(prof_dt, anno_dt, new_sample_dt)
+    prof_dt.add = prep_attributes(prof_dt.add, anno_dt, new_sample_dt)
+    splice_dt = prep_attributes(splice_dt, anno_dt, new_sample_dt, y_var = splice_height_var)
   }
-
-  # prof_dt = merge(sp_assign_dt, prof_dt, by = "sample")
-  # prof_dt$sample = factor(prof_dt$sample, levels = levels(sp_assign_dt$sample))
-  #
-  # prof_dt.add = merge(sp_assign_dt, prof_dt.add, by = "sample")
-  # prof_dt.add$sample = factor(prof_dt.add$sample, levels = levels(sp_assign_dt$sample))
-
 
   agg_prof_dt = prof_dt#prof_dt[, .(y = mean(y)), .(cluster_id, x, id, strand, start, end)]
   agg_prof_dt.add = prof_dt.add#prof_dt.add[, .(y = mean(y)), .(cluster_id, x, id, strand, start, end)]
