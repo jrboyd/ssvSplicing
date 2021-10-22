@@ -1,8 +1,6 @@
 #' Title
 #'
 #' @param sel_sample
-#' @param pdf_name
-#' @param name
 #' @param min_test_value
 #' @param win_size
 #'
@@ -10,10 +8,22 @@
 #' @export
 #' @import cowplot
 #' @examples
+#' wd = "/slipstream/home/dbgap/data/alignment_RNA-Seq/"
+#' sj_files = find_SJ.out.tab_files(wd)[1:10]
+#'
+#' features = load_gtf("~/gencode.v36.annotation.gtf", gene_of_interest = "IKZF1")
+#'
+#' sp_sj_dt = load_splicing_from_SJ.out.tab_files(sj_files, view_gr = features$view_gr)
+#' sp_sj_dt.sel = sp_sj_dt[number_unique > 5]
+#'
+#' plots = plot_splice_heatmap(sp_sj_dt.sel)
+#'
+#' plots$heatmap
+#'
 plot_splice_heatmap = function(splice_dt,
-                               pdf_name,
-                               name,
-                               min_test_value = 20,
+                               nclust = 4,
+                               min_test_value = 0,
+                               min_fraction_present = 0,
                                sel_strand = c("+", "-", "*"),
                                win_size = 1){
   splice_dt = copy(splice_dt)
@@ -42,7 +52,7 @@ plot_splice_heatmap = function(splice_dt,
 
   set.seed(1)
   sp_clust_dt = ssvSignalClustering(sel_dtw,
-                                    nclust = 4,
+                                    nclust = nclust,
                                     row_ = "sample", column_ = "id",
                                     fill_ = "fraction", facet_ = "",
                                     dcast_fill = 0,
@@ -53,7 +63,7 @@ plot_splice_heatmap = function(splice_dt,
   sp_clust_dt$id = factor(sp_clust_dt$id, levels = id_lev)
 
   n_samples = length(unique(dtw$sample))
-  toplot_id = as.character(sel_dtw[, sum(fraction > 0) >= .3*n_samples, id][V1 == TRUE]$id)
+  toplot_id = as.character(sel_dtw[, sum(fraction > 0) >= min_fraction_present*n_samples, id][V1 == TRUE]$id)
   p_sp_heat = ssvSignalHeatmap(sp_clust_dt[id %in% toplot_id], row_ = "sample", column_ = "id", fill_ = "fraction", facet_ = "", dcast_fill = 0, max_cols = Inf, nclust = 3)
 
   splice_dt.agg = sp_clust_dt[, .(fraction = mean(fraction), value = mean(value)), .(seqnames, start, end, strand, id, cluster_id)]
@@ -232,7 +242,6 @@ plot_view_pileup_and_splicing = function(splice_dt,
                     group = paste(id, strand)),
                 alpha = .2,
                 fill = "dodgerblue2") +
-    # geom_path(data = agg_prof_dt, aes(x = xgen, y = y, color = strand, group = paste(id, strand))) +
     geom_ribbon(data = agg_prof_dt,
                 aes(x = xgen,
                     ymin = 0,
@@ -247,13 +256,6 @@ plot_view_pileup_and_splicing = function(splice_dt,
     theme(panel.background = element_blank()) +
     labs(title = plot_title)
 
-  # ggsave(sub(".pdf", ".pileup.pdf", pdf_name), p_pileup, width = 12, height = 10)
-
-  # p_pileup.3b4 = p_pileup +
-  #   coord_cartesian(xlim = c(50365000, 50380000)) +
-  #   labs(subtitle = "exon3b and exon4 region")
-
-  # ggsave(sub(".pdf", ".pileup_ex3b.pdf", pdf_name), p_pileup.3b4, width = 12, height = 10)
   return(p_pileup)
 }
 

@@ -64,6 +64,12 @@ load_gtf = function(gtf_file, gene_of_interest){
 #' @export
 #'
 #' @examples
+#' wd = "/slipstream/home/dbgap/data/alignment_RNA-Seq/"
+#' sj_files = find_SJ.out.tab_files(wd)[1:10]
+#'
+#' features = load_gtf("~/gencode.v36.annotation.gtf", gene_of_interest = "IKZF1")
+#'
+#' load_splicing_from_SJ.out.tab_files(sj_files, features$view_gr)
 load_splicing_from_bam_files = function(bam_files, view_gr, trim_extension = ".Aligned.sortedByCoord.out.bam"){
   qdt = data.table(file = bam_files)
   qdt[, sample := sub(trim_extension, "", basename(file))]
@@ -73,6 +79,7 @@ load_splicing_from_bam_files = function(bam_files, view_gr, trim_extension = ".A
   dt_sp.first$strand = flip_strand[dt_sp.first$strand]
   dt_sp = rbind(dt_sp.first, dt_sp.second)
   dt_sp = dt_sp[, .(N = sum(N)), .(which_label, seqnames, start, end, strand, sample)]
+  dt_sp[, id := paste(seqnames, start, end, strand)]
   dt_sp
 }
 
@@ -104,6 +111,9 @@ load_sj = function(f, view_gr, file_ext = ".SJ.out.tab"){
 #' @export
 #'
 #' @examples
+#' wd = "/slipstream/home/dbgap/data/alignment_RNA-Seq/"
+#' sj_files = find_SJ.out.tab_files(wd)[1:10]
+#' sj_files
 find_SJ.out.tab_files = function(wd){
   stopifnot(dir.exists(wd))
   sj_files = dir(wd, pattern = "SJ.out.tab$", full.names = TRUE)
@@ -118,6 +128,9 @@ find_SJ.out.tab_files = function(wd){
 #' @export
 #'
 #' @examples
+#' wd = "/slipstream/home/dbgap/data/alignment_RNA-Seq/"
+#' bam_files = find_bam_files(wd)[1:10]
+#' bam_files
 find_bam_files = function(wd){
   stopifnot(dir.exists(wd))
   bam_files = dir(wd, pattern = "bam$", full.names = TRUE)
@@ -134,10 +147,15 @@ find_bam_files = function(wd){
 #' @export
 #'
 #' @examples
+#' wd = "/slipstream/home/dbgap/data/alignment_RNA-Seq/"
+#' sj_files = find_SJ.out.tab_files(wd)[1:10]
+#'
+#' features = load_gtf("~/gencode.v36.annotation.gtf", gene_of_interest = "IKZF1")
+#'
+#' load_splicing_from_SJ.out.tab_files(sj_files, features$view_gr)
 load_splicing_from_SJ.out.tab_files = function(sj_files, view_gr){
-  # sj_files = dir("monaco_and_CCLE/", pattern = ".SJ.out.tab$", full.names = TRUE)
-  # sj_files = filter_readable(sj_files)
   dt_sj = rbindlist(pbmcapply::pbmclapply(sj_files, load_sj, view_gr = view_gr))
+  dt_sj[, id := paste(seqnames, start, end, strand)]
   dt_sj
 }
 
