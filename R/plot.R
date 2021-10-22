@@ -10,25 +10,32 @@
 #' @export
 #' @import cowplot
 #' @examples
-plot_splice_heatmap = function(dtw, sel_sample, pdf_name, name, min_test_value = 20, win_size = 1){
-  if(!grepl(".pdf$", pdf_name)){
-    stop("file must be .pdf")
-  }
-  csv_name = sub(".pdf$", ".csv", pdf_name)
+plot_splice_heatmap = function(splice_dt,
+                               pdf_name,
+                               name,
+                               min_test_value = 20,
+                               sel_strand = c("+", "-", "*"),
+                               win_size = 1){
+  splice_dt = copy(splice_dt)
+  splice_dt =   splice_dt[number_unique > min_test_value]
+  splice_dt = splice_dt[strand %in% sel_strand]
+
+  dtw = melt(splice_dt[, .(seqnames, start, end, strand, sample, number_unique)], measure.vars = c("number_unique"))
+  dtw.filled = dcast(dtw,
+                     seqnames+start+end+strand+variable~sample,
+                     value.var = "value",
+                     fill = 0)
+  dtw = melt(dtw.filled, id.vars = c("seqnames", "start", "end", "strand", "variable"), variable.name = "sample", value.name = "value")
 
   dtw[, id := paste(seqnames, start, end, strand)]
   dtw[, fraction := value / sum(value), .(sample)]
 
   sel_id = dtw[, .(test_val = max(value)), .(id)][order(test_val)][test_val >= min_test_value]$id
 
-  sel_dtw = dtw[variable == "number_total" & id %in% sel_id]
-  sel_dtw.filled = dcast(sel_dtw, seqnames+start+end+strand+variable+id~sample, value.var = "value", fill = 0)
-  sel_dtw.filled[1:5, 1:10]
-  sel_dtw = melt(sel_dtw.filled, id.vars = c("seqnames", "start", "end", "strand", "variable", "id"), variable.name = "sample")
+  sel_dtw = dtw[id %in% sel_id]
   sel_dtw[, fraction := value / sum(value), .(sample)]
   sel_dtw$id = factor(sel_dtw$id, levels = sel_id)
 
-  sel_dtw = sel_dtw[sample %in% sel_sample]
 
   set.seed(0)
   id_lev = levels(ssvSignalClustering(sel_dtw, row_ = "id", column_ = "sample", fill_ = "fraction", facet_ = "", dcast_fill = 0, max_cols = Inf, nclust = 5)$id)
@@ -42,6 +49,7 @@ plot_splice_heatmap = function(dtw, sel_sample, pdf_name, name, min_test_value =
                                     max_cols = Inf,
 
                                     max_rows = Inf)
+  set.seed(NULL)
   sp_clust_dt$id = factor(sp_clust_dt$id, levels = id_lev)
 
   n_samples = length(unique(dtw$sample))
@@ -50,33 +58,9 @@ plot_splice_heatmap = function(dtw, sel_sample, pdf_name, name, min_test_value =
 
   splice_dt.agg = sp_clust_dt[, .(fraction = mean(fraction), value = mean(value)), .(seqnames, start, end, strand, id, cluster_id)]
 
-  anno_dt_clust = as.data.table(ex_basic)[, .(start, end)]
-  anno_dt_clust$m = ""
-  anno_rng = splice_dt.agg[, .(ymin = 0, ymax = max(fraction)), .(cluster_id)]
-  anno_rng$m = ""
-  anno_dt_clust = merge(anno_dt_clust, anno_rng, by = "m", allow.cartesian = TRUE)
-
-  p_sp_arch = ggplot() +
-    geom_rect(data = anno_dt_clust, aes(xmin = start, xmax = end, ymin = ymin, ymax = ymax), color = "gray", fill = "gray", size = .2) +
-    geom_arch(GRanges(splice_dt.agg), aes(height = fraction, color = strand)) +
-    facet_grid(cluster_id~., scales = "free_y") +
-    scale_color_manual(values = strand_cols) +
-    labs(y = "fraction") +
-    theme(axis.text.x = element_text(angle = 45, hjust = 1, vjust= 1))
-  # coord_cartesian(xlim = c(50375000, 50400000)) +
-  # annotate("point", x = c(ex_add$start, ex_add$end), y = 0, col = "green") +
-  # annotate("segment", x = ex_add$start, xend = ex_add$end, y = 0, yend = 0, col = "green")
-
-  pg_arch = cowplot::plot_grid(p_sp_heat + labs(title = "name"), p_sp_arch)
-
-  ggsave(pdf_name, pg_arch, width = 8, height = 5)
-
   sp_assign_dt = unique(sp_clust_dt[, .(cluster_id, sample)])[order(cluster_id)]
-  fwrite(sp_assign_dt, csv_name)
 
-  sp_assign_dt = unique(sp_clust_dt[, .(cluster_id, sample)])
-
-  invisible(list(clust_dt = sp_clust_dt, agg_dt = splice_dt.agg, assign_dt = sp_assign_dt))
+  invisible(list(heatmap = p_sp_heat, clust_dt = sp_clust_dt, agg_dt = splice_dt.agg, assign_dt = sp_assign_dt))
 }
 
 #' plot_view_pileup_and_splicing
@@ -123,6 +107,8 @@ plot_splice_heatmap = function(dtw, sel_sample, pdf_name, name, min_test_value =
 #'   anno_dt = anno_dt,
 #'   pool_by = c("group", "group2"),
 #'   exons_to_show = features$goi_exon_dt[transcript_id == "ENST00000331340.8"])
+#'
+#' cowplot::plot_grid(plots, plots.pooled)
 plot_view_pileup_and_splicing = function(splice_dt,
                                          bam_files,
                                          view_gr,
@@ -184,7 +170,6 @@ plot_view_pileup_and_splicing = function(splice_dt,
   prof_dt.add = prof_dt.add[, .(y = sum(y)), .(x, seqnames, start, end, id, strand, sample)]
 
   if(!is.null(pool_by)){
-    browser()
     new_sample_dt = unique(anno_dt[, c(pool_by), with = FALSE])
     new_sample_dt$sample = apply(new_sample_dt, 1, function(x){paste(x, collapse = sample_sep)})
 
