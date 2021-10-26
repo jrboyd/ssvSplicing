@@ -11,11 +11,13 @@ plot_sj_pileups(
   max_span = 200,
   pool_by = NULL,
   pool_FUN = sum,
-  sample_sep = "\\n"
+  sample_sep = "\\n",
+  prof_at_starts = NULL,
+  prof_at_ends = NULL
 )
 }
 \arguments{
-\item{max_span}{}
+\item{prof_at_ends}{}
 }
 \value{
 

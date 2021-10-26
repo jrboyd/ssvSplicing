@@ -19,3 +19,11 @@ load_splicing_from_bam_files(
 \description{
 load_splicing_from_bam_files
 }
+\examples{
+wd = "/slipstream/home/dbgap/data/alignment_RNA-Seq/"
+sj_files = find_SJ.out.tab_files(wd)[1:10]
+
+features = load_gtf("~/gencode.v36.annotation.gtf", gene_of_interest = "IKZF1")
+
+load_splicing_from_SJ.out.tab_files(sj_files, features$view_gr)
+}

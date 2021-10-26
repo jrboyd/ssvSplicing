@@ -15,3 +15,8 @@ find_bam_files(wd)
 \description{
 find_bam_files
 }
+\examples{
+wd = "/slipstream/home/dbgap/data/alignment_RNA-Seq/"
+bam_files = find_bam_files(wd)[1:10]
+bam_files
+}

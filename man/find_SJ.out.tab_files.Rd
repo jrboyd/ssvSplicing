@@ -15,3 +15,8 @@ find_SJ.out.tab_files(wd)
 \description{
 find_SJ.out.tab_files
 }
+\examples{
+wd = "/slipstream/home/dbgap/data/alignment_RNA-Seq/"
+sj_files = find_SJ.out.tab_files(wd)[1:10]
+sj_files
+}

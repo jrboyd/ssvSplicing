@@ -75,14 +75,20 @@ plot_splice_heatmap = function(splice_dt,
 
 #' plot_view_pileup_and_splicing
 #'
-#' @param bam_qdt
 #' @param splice_dt
-#' @param ik_gr
-#' @param sp_assign_dt
 #' @param return_data
 #' @param pool_by
 #' @param pool_FUN
 #' @param sample_sep
+#' @param bam_files
+#' @param view_gr
+#' @param plot_title
+#' @param splice_height_var
+#' @param anno_dt
+#' @param exons_to_show
+#' @param win_size
+#' @param prof_dt
+#' @param prof_dt.add
 #'
 #' @return
 #' @export
@@ -130,7 +136,9 @@ plot_view_pileup_and_splicing = function(splice_dt,
                                          pool_FUN = sum,
                                          sample_sep = "\n",
                                          exons_to_show = NULL,
-                                         win_size = 50){
+                                         win_size = 50,
+                                         prof_dt = NULL,
+                                         prof_dt.add = NULL){
   if(is.character(bam_files)){
     bam_qdt = data.table(file= bam_files)
     bam_qdt[, sample := sub(".Aligned.sortedByCoord.out.bam", "", basename(file))]
@@ -169,24 +177,31 @@ plot_view_pileup_and_splicing = function(splice_dt,
       stop(paste0(
         "Some sample do not have metadata in anno_dt:\n ",
         paste(setdiff(bam_qdt$sample, anno_dt$sample), collapse = "\n ")
-        ))
+      ))
     }
   }
 
-  prof_dt = ssvFetchBam(bam_qdt, view_gr, win_size = win_size, return_data.table = TRUE, fragLens = NA)
-  prof_dt.add = ssvFetchBam(bam_qdt, view_gr, win_size = win_size, return_data.table = TRUE, splice_strategy = "add", fragLens = NA)
+  if(is.null(prof_dt)){
+    message("Retrieving direct read pileups...")
+    prof_dt.raw = ssvFetchBam(bam_qdt, view_gr, win_size = win_size, return_data.table = TRUE, fragLens = NA)
+  }else{
+    message("Using provided direct read pileups.")
+    prof_dt.raw = prof_dt
+  }
+  if(is.null(prof_dt.add)){
+    message("Retrieving split read pileups...")
+    prof_dt.add.raw = ssvFetchBam(bam_qdt, view_gr, win_size = win_size, return_data.table = TRUE, splice_strategy = "add", fragLens = NA)
+  }else{
+    message("Using provided split read pileups.")
+    prof_dt.add.raw = prof_dt.add
+  }
 
-  prof_dt = prof_dt[, .(y = sum(y)), .(x, seqnames, start, end, id, strand, sample)]
-  prof_dt.add = prof_dt.add[, .(y = sum(y)), .(x, seqnames, start, end, id, strand, sample)]
+  prof_dt = prof_dt.raw[, .(y = sum(y)), .(x, seqnames, start, end, id, strand, sample)]
+  prof_dt.add = prof_dt.add.raw[, .(y = sum(y)), .(x, seqnames, start, end, id, strand, sample)]
 
   if(!is.null(pool_by)){
     new_sample_dt = unique(anno_dt[, c(pool_by), with = FALSE])
     new_sample_dt$sample = apply(new_sample_dt, 1, function(x){paste(x, collapse = sample_sep)})
-
-    prof_dt
-    prof_dt.add
-    splice_dt
-    anno_dt
 
     prep_attributes = function(.dt, .anno_dt, .new_sample_dt, y_var = "y"){
       for(ko in setdiff(intersect(colnames(.dt), colnames(.anno_dt)), "sample")){
@@ -213,11 +228,16 @@ plot_view_pileup_and_splicing = function(splice_dt,
   agg_prof_dt[, xgen := (start + end)/2]
   agg_prof_dt.add[, xgen := (start + end)/2]
 
-  anno_dt_pile = as.data.table(exons_to_show)[, .(start, end)]
-  anno_dt_pile$m = ""
-  anno_rng = agg_prof_dt.add[, .(ymin = 0, ymax = max(y)), .(sample)]
-  anno_rng$m = ""
-  anno_dt_pile = merge(anno_dt_pile, anno_rng, by = "m", allow.cartesian = TRUE)
+  if(is.null(exons_to_show)){
+    anno_dt_pile = NULL
+  }else{
+    anno_dt_pile = as.data.table(exons_to_show)[, .(start, end)]
+    anno_dt_pile$m = ""
+    anno_rng = agg_prof_dt.add[, .(ymin = 0, ymax = max(y)), .(sample)]
+    anno_rng$m = ""
+    anno_dt_pile = merge(anno_dt_pile, anno_rng, by = "m", allow.cartesian = TRUE)
+  }
+
 
   if(return_data){
     return(list(
@@ -227,14 +247,19 @@ plot_view_pileup_and_splicing = function(splice_dt,
     ))
   }
 
-  p_pileup = ggplot() +
-    geom_rect(data = anno_dt_pile,
-              aes(xmin = start,
-                  xmax = end,
-                  ymin = ymin,
-                  ymax = ymax),
-              fill = "lightgray",
-              color = "lightgray") +
+  p_pileup = ggplot()
+
+  if(!is.null(anno_dt_pile)){
+    p_pileup = p_pileup +
+      geom_rect(data = anno_dt_pile,
+                aes(xmin = start,
+                    xmax = end,
+                    ymin = ymin,
+                    ymax = ymax),
+                fill = "lightgray",
+                color = "lightgray")
+  }
+  p_pileup = p_pileup +
     geom_ribbon(data = agg_prof_dt.add,
                 aes(x = xgen,
                     ymin = 0,
@@ -256,7 +281,9 @@ plot_view_pileup_and_splicing = function(splice_dt,
     theme(panel.background = element_blank()) +
     labs(title = plot_title)
 
-  return(p_pileup)
+  return(list(plot = p_pileup,
+              prof_dt = prof_dt.raw,
+              prof_dt.add = prof_dt.add.raw))
 }
 
 #' plot_sj_pileups
@@ -265,6 +292,11 @@ plot_view_pileup_and_splicing = function(splice_dt,
 #' @param bam_files
 #' @param view_gr
 #' @param max_span
+#' @param pool_by
+#' @param pool_FUN
+#' @param sample_sep
+#' @param prof_at_starts
+#' @param prof_at_ends
 #'
 #' @return
 #' @export
@@ -288,7 +320,7 @@ plot_view_pileup_and_splicing = function(splice_dt,
 #'
 #' bam_qdt = data.table(file = bam_files[1:10], a = LETTERS[rep(c(1, 2), each = 5)], b = LETTERS[rep(c(3, 4), 5)])
 #' plots.pooled = plot_sj_pileups(sp_sj_dt.sel, bam_qdt, features$view_gr, pool_by = c("a", "b"))
-plot_sj_pileups = function(sj_dt, bam_files, view_gr, max_span = 200, pool_by = NULL, pool_FUN = sum, sample_sep = "\n"){
+plot_sj_pileups = function(sj_dt, bam_files, view_gr, max_span = 200, pool_by = NULL, pool_FUN = sum, sample_sep = "\n", prof_at_starts = NULL, prof_at_ends = NULL){
   gr_starts = GRanges(unique(sj_dt[, .(seqnames, start, end = start, strand)]))
   gr_starts$id = paste("start", seq_along(gr_starts), sep = "_")
   names(gr_starts) = start(gr_starts)
@@ -314,26 +346,36 @@ plot_sj_pileups = function(sj_dt, bam_files, view_gr, max_span = 200, pool_by = 
   }
 
 
-  message("Retrieving pileups at splice starts...")
-  prof_at_starts = ssvRecipes::ssvFetchBamPE.RNA(bam_qdt, resize(gr_starts, max_span*2, fix = "center"),
-                                                 target_strand = "both",
-                                                 return_data.table = TRUE,
-                                                 win_size = 1,
-                                                 n_region_splits = 20)
+  if(is.null(prof_at_starts)){
+    message("Retrieving pileups at splice starts...")
+    prof_at_starts.raw = ssvRecipes::ssvFetchBamPE.RNA(bam_qdt, resize(gr_starts, max_span*2, fix = "center"),
+                                                       target_strand = "both",
+                                                       return_data.table = TRUE,
+                                                       win_size = 1,
+                                                       n_region_splits = 20)
+  }else{
+    message("Using provided prof_at_starts.")
+    prof_at_starts.raw = prof_at_starts
+  }
 
-  message("Retrieving pileups at splice ends...")
-  prof_at_ends = ssvRecipes::ssvFetchBamPE.RNA(bam_qdt, resize(gr_ends, max_span*2, fix = "center"),
-                                               target_strand = "both",
-                                               return_data.table = TRUE,
-                                               win_size = 1,
-                                               n_region_splits = 20)
+  if(is.null(prof_at_ends)){
+    message("Retrieving pileups at splice ends...")
+    prof_at_ends.raw = ssvRecipes::ssvFetchBamPE.RNA(bam_qdt, resize(gr_ends, max_span*2, fix = "center"),
+                                                     target_strand = "both",
+                                                     return_data.table = TRUE,
+                                                     win_size = 1,
+                                                     n_region_splits = 20)
+  }else{
+    message("Using provided prof_at_ends.")
+    prof_at_ends.raw = prof_at_ends
+  }
 
   if(!is.null(pool_by)){
     new_sample_dt = unique(bam_qdt[, c(pool_by), with = FALSE])
     new_sample_dt$sample = apply(new_sample_dt, 1, function(x){paste(x, collapse = sample_sep)})
 
-    prof_at_starts = prof_at_starts[, .(y = pool_FUN(y)), c("x", "seqnames", "start", "end", "id", "strand", pool_by)]
-    prof_at_ends = prof_at_ends[, .(y = pool_FUN(y)), c("x", "seqnames", "start", "end", "id", "strand", pool_by)]
+    prof_at_starts = prof_at_starts.raw[, .(y = pool_FUN(y)), c("x", "seqnames", "start", "end", "id", "strand", pool_by)]
+    prof_at_ends = prof_at_ends.raw[, .(y = pool_FUN(y)), c("x", "seqnames", "start", "end", "id", "strand", pool_by)]
 
     prof_at_starts = merge(prof_at_starts, new_sample_dt, by = pool_by)
     prof_at_ends = merge(prof_at_ends, new_sample_dt, by = pool_by)
@@ -375,9 +417,6 @@ plot_sj_pileups = function(sj_dt, bam_files, view_gr, max_span = 200, pool_by = 
   plots_at_ends = plot_stuff(prof_at_ends)
   plots_at_ends$side =  plots_at_ends$side + labs(title = "splice starts")
 
-  plots_at_starts$assign_dt[cluster_id %in% c(2, 3)]
-  plots_at_ends$assign_dt[cluster_id %in% c(2, 3, 4, 5)]
-
   pg_side_heatmap = cowplot::plot_grid(nrow = 1,
                                        cowplot::plot_grid(ncol = 1, rel_heights = c(1, 10),
                                                           ggplot() + theme_void() + cowplot::draw_text("Splice Site Starts"),
@@ -388,13 +427,13 @@ plot_sj_pileups = function(sj_dt, bam_files, view_gr, max_span = 200, pool_by = 
   )
 
 
-  pg_side_plots = cowplot::plot_grid(ncol = 1,
+  pg_side_plots = cowplot::plot_grid(nrow = 1,
                                      plots_at_starts$side,
                                      plots_at_ends$side +
                                        labs(title = "splice ends")
   )
 
-  pg_assembled = cowplot::plot_grid(nrow = 1,
+  pg_assembled = cowplot::plot_grid(ncol = 1,
                                     pg_side_heatmap,
                                     pg_side_plots)
   invisible(list(
@@ -407,6 +446,9 @@ plot_sj_pileups = function(sj_dt, bam_files, view_gr, max_span = 200, pool_by = 
     ),
     side_plots = pg_side_plots,
     heatmaps = pg_side_heatmap,
-    assembled = pg_assembled
+    assembled = pg_assembled,
+    assign_dt = list(starts = plots_at_starts$assign_dt, ends = plots_at_ends$assign_dt),
+    prof_at_starts = prof_at_starts.raw,
+    prof_at_ends = prof_at_ends.raw
   ))
 }

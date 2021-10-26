@@ -5,11 +5,11 @@
 \title{Title}
 \usage{
 plot_splice_heatmap(
-  dtw,
-  sel_sample,
-  pdf_name,
-  name,
-  min_test_value = 20,
+  splice_dt,
+  nclust = 4,
+  min_test_value = 0,
+  min_fraction_present = 0,
+  sel_strand = c("+", "-", "*"),
   win_size = 1
 )
 }
@@ -21,4 +21,18 @@ plot_splice_heatmap(
 }
 \description{
 Title
+}
+\examples{
+wd = "/slipstream/home/dbgap/data/alignment_RNA-Seq/"
+sj_files = find_SJ.out.tab_files(wd)[1:10]
+
+features = load_gtf("~/gencode.v36.annotation.gtf", gene_of_interest = "IKZF1")
+
+sp_sj_dt = load_splicing_from_SJ.out.tab_files(sj_files, view_gr = features$view_gr)
+sp_sj_dt.sel = sp_sj_dt[number_unique > 5]
+
+plots = plot_splice_heatmap(sp_sj_dt.sel)
+
+plots$heatmap
+
 }
