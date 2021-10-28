@@ -45,7 +45,7 @@ plot_splice_heatmap = function(splice_dt,
   sel_id = dtw[, .(test_val = max(value)), .(id)][order(test_val)][test_val >= min_test_value]$id
 
   sel_dtw = dtw[id %in% sel_id]
-  sel_dtw[, fraction := value / sum(value), .(sample)]
+  sel_dtw[, fraction := value / max(sum(value),1), .(sample)]
   sel_dtw$id = factor(sel_dtw$id, levels = sel_id)
 
 
