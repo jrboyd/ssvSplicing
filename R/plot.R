@@ -27,7 +27,9 @@ plot_splice_heatmap = function(splice_dt,
                                sel_strand = c("+", "-", "*"),
                                win_size = 1){
   splice_dt = copy(splice_dt)
-  splice_dt =   splice_dt[number_unique > min_test_value]
+  sel_id = unique(splice_dt[number_unique > min_test_value]$id)
+  # splice_dt =   splice_dt[number_unique > min_test_value]
+  splice_dt = splice_dt[id %in% sel_id]
   splice_dt = splice_dt[strand %in% sel_strand]
 
   dtw = melt(splice_dt[, .(seqnames, start, end, strand, sample, number_unique)], measure.vars = c("number_unique"))
@@ -320,7 +322,16 @@ plot_view_pileup_and_splicing = function(splice_dt,
 #'
 #' bam_qdt = data.table(file = bam_files[1:10], a = LETTERS[rep(c(1, 2), each = 5)], b = LETTERS[rep(c(3, 4), 5)])
 #' plots.pooled = plot_sj_pileups(sp_sj_dt.sel, bam_qdt, features$view_gr, pool_by = c("a", "b"))
-plot_sj_pileups = function(sj_dt, bam_files, view_gr, max_span = 200, pool_by = NULL, pool_FUN = sum, sample_sep = "\n", prof_at_starts = NULL, prof_at_ends = NULL){
+plot_sj_pileups = function(sj_dt,
+                           bam_files,
+                           view_gr,
+                           max_span = 200,
+                           pool_by = NULL,
+                           pool_FUN = sum,
+                           sample_sep = "\n",
+                           prof_at_starts = NULL,
+                           prof_at_ends = NULL,
+                           rel_heights.assembly = c(2, 1)){
   gr_starts = GRanges(unique(sj_dt[, .(seqnames, start, end = start, strand)]))
   gr_starts$id = paste("start", seq_along(gr_starts), sep = "_")
   names(gr_starts) = start(gr_starts)
@@ -340,12 +351,9 @@ plot_sj_pileups = function(sj_dt, bam_files, view_gr, max_span = 200, pool_by = 
   }else{
     stop("bam_files must be character or data.frame")
   }
-
   if(!is.null(pool_by)){
     stopifnot(pool_by %in% colnames(bam_qdt))
   }
-
-
   if(is.null(prof_at_starts)){
     message("Retrieving pileups at splice starts...")
     prof_at_starts.raw = ssvRecipes::ssvFetchBamPE.RNA(bam_qdt, resize(gr_starts, max_span*2, fix = "center"),
@@ -433,7 +441,7 @@ plot_sj_pileups = function(sj_dt, bam_files, view_gr, max_span = 200, pool_by = 
                                        labs(title = "splice ends")
   )
 
-  pg_assembled = cowplot::plot_grid(ncol = 1,
+  pg_assembled = cowplot::plot_grid(ncol = 1, rel_heights = rel_heights.assembly,
                                     pg_side_heatmap,
                                     pg_side_plots)
   invisible(list(
@@ -452,3 +460,4 @@ plot_sj_pileups = function(sj_dt, bam_files, view_gr, max_span = 200, pool_by = 
     prof_at_ends = prof_at_ends.raw
   ))
 }
+
