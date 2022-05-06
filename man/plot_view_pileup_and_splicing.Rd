@@ -16,9 +16,10 @@ plot_view_pileup_and_splicing(
   pool_FUN = sum,
   sample_sep = "\\n",
   exons_to_show = NULL,
-  win_size = 50,
+  win_size = max(round(width(view_gr)/10000), 1),
   prof_dt = NULL,
-  prof_dt.add = NULL
+  prof_dt.add = NULL,
+  show_bg = FALSE
 )
 }
 \arguments{
@@ -43,23 +44,45 @@ features = load_gtf("~/gencode.v36.annotation.gtf", gene_of_interest = "IKZF1")
 sp_sj_dt = load_splicing_from_SJ.out.tab_files(sj_files, view_gr = features$view_gr)
 sp_sj_dt.sel = sp_sj_dt[number_unique > 5]
 
-plots = plot_view_pileup_and_splicing(sp_sj_dt.sel, bam_files[1:4], features$view_gr, exons_to_show = features$goi_exon_dt[transcript_id == "ENST00000331340.8"])
-
 bam_qdt = data.table(file = bam_files)
 bam_qdt[, sample := sub(".Aligned.sorted.+", "", basename(file))]
 
 anno_dt = unique(sp_sj_dt.sel[, .(sample)])
 anno_dt$group = rep(c("a", "b"), each = 5)
 anno_dt$group2 = rep(c("c", "d"), 5)
-debug(plot_view_pileup_and_splicing)
 
 plots = plot_view_pileup_and_splicing(sp_sj_dt.sel, bam_files[1:4], features$view_gr,
-  exons_to_show = features$goi_exon_dt[transcript_id == "ENST00000331340.8"])
+  exons_to_show = features$goi_exon_dt[transcript_id == "ENST00000331340.8"])$plot
+
+pos = features$goi_exon_dt[2,]$end
+plots + coord_cartesian(xlim = c(pos - 200, pos + 200))
+
+#reduce win_size if you'll be zooming in
+plots.zoom = plot_view_pileup_and_splicing(sp_sj_dt.sel, bam_files[1:4], features$view_gr, win_size = 1,
+  exons_to_show = features$goi_exon_dt[transcript_id == "ENST00000331340.8"])$plot
+
+pos = features$goi_exon_dt[2,]$end
+plots.zoom + coord_cartesian(xlim = c(pos - 200, pos + 200))
+
+
+prof_dt = ssvFetchBam(bam_files[1:4], features$view_gr, win_size = 1, return_data.table = TRUE, fragLens = NA, splice_strategy = "ignore")
+prof_dt[, x := (start + end) / 2]
+ggplot(prof_dt, aes(x = x, y = y)) +
+  facet_grid(sample~.) +
+  geom_path() +
+  coord_cartesian(xlim = c(pos - 200, pos + 200))
+
+prof_dt = ssvRecipes::ssvFetchBamPE.RNA(bam_files[1:4], features$view_gr, win_size = 1, return_data.table = TRUE)
+prof_dt[, x := (start + end) / 2]
+ggplot(prof_dt, aes(x = x, y = y)) +
+  facet_grid(sample~.) +
+  geom_path() +
+  coord_cartesian(xlim = c(pos - 200, pos + 200))
 
 plots.pooled = plot_view_pileup_and_splicing(sp_sj_dt.sel, bam_qdt[1:4,], features$view_gr,
   anno_dt = anno_dt,
   pool_by = c("group", "group2"),
-  exons_to_show = features$goi_exon_dt[transcript_id == "ENST00000331340.8"])
+  exons_to_show = features$goi_exon_dt[transcript_id == "ENST00000331340.8"])$plot
 
 cowplot::plot_grid(plots, plots.pooled)
 }

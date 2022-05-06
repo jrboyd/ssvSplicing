@@ -35,7 +35,7 @@ filter_readable= function(f){
 #' ref_info = load_gtf(gtf_file, goi)
 #' #or if you already have exon annotatation loaded, this is much faster
 #' ref_info.faster = load_gtf(ref_info$ex_gr, goi)
-load_gtf = function(gtf_file, gene_of_interest){
+load_gtf = function(gtf_file, gene_of_interest, expansion = 1.3){
   if(is(gtf_file, "GRanges")){
     ex_gr = gtf_file
   }else{
@@ -50,7 +50,7 @@ load_gtf = function(gtf_file, gene_of_interest){
   ik_dt$transcript_id = factor(ik_dt$transcript_id, levels = tx_widths$transcript_id)
 
   view_gr = range(ik_gr)
-  view_gr = resize(view_gr, 1.3*width(view_gr), fix = "center")
+  view_gr = resize(view_gr, expansion*width(view_gr), fix = "center")
   return(list(ex_gr = ex_gr, view_gr = view_gr, goi_exon_dt = ik_dt))
 }
 

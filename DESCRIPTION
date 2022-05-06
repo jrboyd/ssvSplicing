@@ -13,9 +13,9 @@ Depends:
  seqsetvis,
  data.table,
  ggplot2,
- GenomicRanges,
- ggbio
+ GenomicRanges
 Imports:
  rtracklayer,
- cowplot
-RoxygenNote: 7.1.1
+ cowplot,
+ ggbio
+RoxygenNote: 7.1.2

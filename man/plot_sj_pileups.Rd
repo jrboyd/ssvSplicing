@@ -13,7 +13,8 @@ plot_sj_pileups(
   pool_FUN = sum,
   sample_sep = "\\n",
   prof_at_starts = NULL,
-  prof_at_ends = NULL
+  prof_at_ends = NULL,
+  rel_heights.assembly = c(2, 1)
 )
 }
 \arguments{

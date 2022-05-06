@@ -4,7 +4,7 @@
 \alias{load_gtf}
 \title{load_gtf}
 \usage{
-load_gtf(gtf_file, gene_of_interest)
+load_gtf(gtf_file, gene_of_interest, expansion = 1.3)
 }
 \arguments{
 \item{gene_of_interest}{}

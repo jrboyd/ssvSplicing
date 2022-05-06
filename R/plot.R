@@ -94,6 +94,8 @@ plot_splice_heatmap = function(splice_dt,
 #'
 #' @return
 #' @export
+#' @importFrom ggbio geom_arch
+#' @importFrom seqsetvis get_mapped_reads
 #'
 #' @examples
 #' options(mc.cores = 20)
@@ -108,23 +110,45 @@ plot_splice_heatmap = function(splice_dt,
 #' sp_sj_dt = load_splicing_from_SJ.out.tab_files(sj_files, view_gr = features$view_gr)
 #' sp_sj_dt.sel = sp_sj_dt[number_unique > 5]
 #'
-#' plots = plot_view_pileup_and_splicing(sp_sj_dt.sel, bam_files[1:4], features$view_gr, exons_to_show = features$goi_exon_dt[transcript_id == "ENST00000331340.8"])
-#'
 #' bam_qdt = data.table(file = bam_files)
 #' bam_qdt[, sample := sub(".Aligned.sorted.+", "", basename(file))]
 #'
 #' anno_dt = unique(sp_sj_dt.sel[, .(sample)])
 #' anno_dt$group = rep(c("a", "b"), each = 5)
 #' anno_dt$group2 = rep(c("c", "d"), 5)
-#' debug(plot_view_pileup_and_splicing)
 #'
 #' plots = plot_view_pileup_and_splicing(sp_sj_dt.sel, bam_files[1:4], features$view_gr,
-#'   exons_to_show = features$goi_exon_dt[transcript_id == "ENST00000331340.8"])
+#'   exons_to_show = features$goi_exon_dt[transcript_id == "ENST00000331340.8"])$plot
+#'
+#' pos = features$goi_exon_dt[2,]$end
+#' plots + coord_cartesian(xlim = c(pos - 200, pos + 200))
+#'
+#' #reduce win_size if you'll be zooming in
+#' plots.zoom = plot_view_pileup_and_splicing(sp_sj_dt.sel, bam_files[1:4], features$view_gr, win_size = 1,
+#'   exons_to_show = features$goi_exon_dt[transcript_id == "ENST00000331340.8"])$plot
+#'
+#' pos = features$goi_exon_dt[2,]$end
+#' plots.zoom + coord_cartesian(xlim = c(pos - 200, pos + 200))
+#'
+#'
+#' prof_dt = ssvFetchBam(bam_files[1:4], features$view_gr, win_size = 1, return_data.table = TRUE, fragLens = NA, splice_strategy = "ignore")
+#' prof_dt[, x := (start + end) / 2]
+#' ggplot(prof_dt, aes(x = x, y = y)) +
+#'   facet_grid(sample~.) +
+#'   geom_path() +
+#'   coord_cartesian(xlim = c(pos - 200, pos + 200))
+#'
+#' prof_dt = ssvRecipes::ssvFetchBamPE.RNA(bam_files[1:4], features$view_gr, win_size = 1, return_data.table = TRUE)
+#' prof_dt[, x := (start + end) / 2]
+#' ggplot(prof_dt, aes(x = x, y = y)) +
+#'   facet_grid(sample~.) +
+#'   geom_path() +
+#'   coord_cartesian(xlim = c(pos - 200, pos + 200))
 #'
 #' plots.pooled = plot_view_pileup_and_splicing(sp_sj_dt.sel, bam_qdt[1:4,], features$view_gr,
 #'   anno_dt = anno_dt,
 #'   pool_by = c("group", "group2"),
-#'   exons_to_show = features$goi_exon_dt[transcript_id == "ENST00000331340.8"])
+#'   exons_to_show = features$goi_exon_dt[transcript_id == "ENST00000331340.8"])$plot
 #'
 #' cowplot::plot_grid(plots, plots.pooled)
 plot_view_pileup_and_splicing = function(splice_dt,
@@ -138,17 +162,22 @@ plot_view_pileup_and_splicing = function(splice_dt,
                                          pool_FUN = sum,
                                          sample_sep = "\n",
                                          exons_to_show = NULL,
-                                         win_size = 50,
+                                         win_size = max(round(width(view_gr)/1e4), 1),
                                          prof_dt = NULL,
-                                         prof_dt.add = NULL){
+                                         prof_dt.add = NULL,
+                                         show_bg = FALSE,
+                                         apply_read_depth_normalization = FALSE){
   if(is.character(bam_files)){
     bam_qdt = data.table(file= bam_files)
     bam_qdt[, sample := sub(".Aligned.sortedByCoord.out.bam", "", basename(file))]
   }else if(is.data.frame(bam_files)){
     bam_qdt = bam_files
+    colnames(bam_qdt)[1] = 'file'
   }else{
     stop("bam_files must be character or data.frame")
   }
+  stopifnot(file.exists(bam_qdt$file))
+  bam_qdt[, mapped_reads := seqsetvis::get_mapped_reads(file)]
 
   #try to sync sample names
   if(!all(splice_dt$sample %in% bam_qdt$sample)){
@@ -166,8 +195,6 @@ plot_view_pileup_and_splicing = function(splice_dt,
     }else{
       warning("Could not sync sample names between splice_dt and bam_files. Splicing arches will not be plotted.")
     }
-
-
   }
 
   if(!is.null(pool_by)){
@@ -185,21 +212,40 @@ plot_view_pileup_and_splicing = function(splice_dt,
 
   if(is.null(prof_dt)){
     message("Retrieving direct read pileups...")
-    prof_dt.raw = ssvFetchBam(bam_qdt, view_gr, win_size = win_size, return_data.table = TRUE, fragLens = NA)
+    prof_dt.raw = ssvFetchBam(bam_qdt,
+                              view_gr,
+                              win_size = win_size,
+                              return_data.table = TRUE,
+                              splice_strategy = "ignore",
+                              fragLens = NA)
   }else{
     message("Using provided direct read pileups.")
     prof_dt.raw = prof_dt
   }
+  prof_dt.raw[, y_rpm := y / mapped_reads * 1e6]
+
   if(is.null(prof_dt.add)){
     message("Retrieving split read pileups...")
-    prof_dt.add.raw = ssvFetchBam(bam_qdt, view_gr, win_size = win_size, return_data.table = TRUE, splice_strategy = "add", fragLens = NA)
+    if(show_bg){
+      prof_dt.add.raw = ssvFetchBam(bam_qdt, view_gr, win_size = win_size, return_data.table = TRUE, splice_strategy = "add", fragLens = NA)
+      prof_dt.add.raw[, y_rpm := y / mapped_reads * 1e6]
+    }
+    else{
+      prof_dt.add.raw = NULL
+    }
   }else{
     message("Using provided split read pileups.")
     prof_dt.add.raw = prof_dt.add
+    prof_dt.add.raw[, y_rpm := y / mapped_reads * 1e6]
   }
 
-  prof_dt = prof_dt.raw[, .(y = sum(y)), .(x, seqnames, start, end, id, strand, sample)]
-  prof_dt.add = prof_dt.add.raw[, .(y = sum(y)), .(x, seqnames, start, end, id, strand, sample)]
+
+  prof_dt = prof_dt.raw[, .(y = sum(y), mapped_reads = sum(mapped_reads)), .(x, seqnames, start, end, id, strand, sample)]
+  if(is.null(prof_dt.add.raw)){
+    prof_dt.add = NULL
+  }else{
+    prof_dt.add = prof_dt.add.raw[, .(y = sum(y), mapped_reads = sum(mapped_reads)), .(x, seqnames, start, end, id, strand, sample)]
+  }
 
   if(!is.null(pool_by)){
     new_sample_dt = unique(anno_dt[, c(pool_by), with = FALSE])
@@ -216,10 +262,13 @@ plot_view_pileup_and_splicing = function(splice_dt,
       merge(.dt, .new_sample_dt, by = pool_by)
     }
     prof_dt = prep_attributes(prof_dt, anno_dt, new_sample_dt)
-    prof_dt.add = prep_attributes(prof_dt.add, anno_dt, new_sample_dt)
+    if(!is.null(prof_dt.add)){
+      prof_dt.add = prep_attributes(prof_dt.add, anno_dt, new_sample_dt)
+    }
     splice_dt = prep_attributes(splice_dt, anno_dt, new_sample_dt, y_var = splice_height_var)
   }
 
+  browser()
   agg_prof_dt = prof_dt#prof_dt[, .(y = mean(y)), .(cluster_id, x, id, strand, start, end)]
   agg_prof_dt.add = prof_dt.add#prof_dt.add[, .(y = mean(y)), .(cluster_id, x, id, strand, start, end)]
 
@@ -228,15 +277,19 @@ plot_view_pileup_and_splicing = function(splice_dt,
   #   facet_grid(cluster_id~id, scales = "free_x")
 
   agg_prof_dt[, xgen := (start + end)/2]
-  agg_prof_dt.add[, xgen := (start + end)/2]
+  if(!is.null(agg_prof_dt.add)){
+    agg_prof_dt.add[, xgen := (start + end)/2]
+  }
+
 
   if(is.null(exons_to_show)){
     anno_dt_pile = NULL
   }else{
     anno_dt_pile = as.data.table(exons_to_show)[, .(start, end)]
     anno_dt_pile$m = ""
-    anno_rng = agg_prof_dt.add[, .(ymin = 0, ymax = max(y)), .(sample)]
+    anno_rng = agg_prof_dt[, .(ymin = 0, ymax = max(y)), .(sample)]
     anno_rng$m = ""
+
     anno_dt_pile = merge(anno_dt_pile, anno_rng, by = "m", allow.cartesian = TRUE)
   }
 
@@ -261,31 +314,56 @@ plot_view_pileup_and_splicing = function(splice_dt,
                 fill = "lightgray",
                 color = "lightgray")
   }
-  p_pileup = p_pileup +
-    geom_ribbon(data = agg_prof_dt.add,
-                aes(x = xgen,
-                    ymin = 0,
-                    ymax = y,
-                    group = paste(id, strand)),
-                alpha = .2,
-                fill = "dodgerblue2") +
-    geom_ribbon(data = agg_prof_dt,
-                aes(x = xgen,
-                    ymin = 0,
-                    ymax = y,
-                    group = paste(id, strand)),
-                alpha = 1,
-                fill = "dodgerblue2") +
-    geom_arch(GRanges(splice_dt),
-              aes_string(height = splice_height_var),
-              color = "black") +
-    facet_grid(sample~., scales = "free") +
-    theme(panel.background = element_blank()) +
-    labs(title = plot_title)
+  if(!is.null(agg_prof_dt.add)){
+    p_pileup = p_pileup +
+      geom_ribbon(data = agg_prof_dt.add,
+                  aes(x = xgen,
+                      ymin = 0,
+                      ymax = y,
+                      group = paste(id, strand)),
+                  alpha = .2,
+                  fill = "dodgerblue2")
+  }
+  agg_prof_dt[, y_rpm := y / mapped_reads * 1e6]
+  if(apply_read_depth_normalization){
+    p_pileup = p_pileup +
+      geom_ribbon(data = agg_prof_dt,
+                  aes(x = xgen,
+                      ymin = 0,
+                      ymax = y_rpm,
+                      group = paste(id, strand)),
+                  alpha = 1,
+                  fill = "dodgerblue2") +
+      ggbio::geom_arch(GRanges(splice_dt),
+                       aes_string(height = splice_height_var),
+                       color = "black") +
+      facet_grid(sample~., scales = "free") +
+      theme(panel.background = element_blank()) +
+      labs(title = plot_title)
+  }else{
+    p_pileup = p_pileup +
+      geom_ribbon(data = agg_prof_dt,
+                  aes(x = xgen,
+                      ymin = 0,
+                      ymax = y,
+                      group = paste(id, strand)),
+                  alpha = 1,
+                  fill = "dodgerblue2") +
+      ggbio::geom_arch(GRanges(splice_dt),
+                       aes_string(height = splice_height_var),
+                       color = "black") +
+      facet_grid(sample~., scales = "free") +
+      theme(panel.background = element_blank()) +
+      labs(title = plot_title)
+  }
+
 
   return(list(plot = p_pileup,
               prof_dt = prof_dt.raw,
-              prof_dt.add = prof_dt.add.raw))
+              prof_dt.add = prof_dt.add.raw,
+              agg_prof_dt = agg_prof_dt,
+              agg_prof_dt.add = agg_prof_dt.add,
+              splice_dt = splice_dt))
 }
 
 #' plot_sj_pileups

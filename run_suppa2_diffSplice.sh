@@ -7,14 +7,17 @@
 #-rw-r--r-- 1 sfrietze pi-sfrietze 231K Jan  5 15:17 /users/j/r/jrboyd/lab_shared/indexes/DM6/SUPPA2/suppa2.dm6.ensGene.gtf._RI_strict.ioe
 #-rw-r--r-- 1 sfrietze pi-sfrietze 422K Jan  5 15:17 /users/j/r/jrboyd/lab_shared/indexes/DM6/SUPPA2/suppa2.dm6.ensGene.gtf._SE_strict.ioe
 
+gtf_base=~/lab_shared/indexes/DM6/SUPPA2/suppa2.dm6.ensGene.gtf
+
 diff_dir=$1
 if [ -z $diff_dir ]; then diff_dir=$(pwd); fi
 
 for loc in isoform A3 A5 AF AL MX RI SE; do
-  ref=~/lab_shared/indexes/DM6/SUPPA2/suppa2.dm6.ensGene.gtf._${loc}_strict.ioe
+  ref=${gtf_base}._${loc}_strict.ioe
   if [ ${loc} = isoform ]; then 
-    ref=~/lab_shared/indexes/DM6/SUPPA2/suppa2.dm6.ensGene.gtf..ioi
+    ref=${gtf_base}..ioi
   fi
+  if [ ! -f $ref ]; then echo $ref reference file not found. quit.; exit 1; fi
   tpm_files="$diff_dir/tpm_18C.tpm $diff_dir/tpm_25C.tpm $diff_dir/tpm_30C.tpm"
   psi_files="$diff_dir/${loc}_18C.psi $diff_dir/${loc}_25C.psi $diff_dir/${loc}_30C.psi"
   ls -lha $tpm_files $psi_files $ref 
