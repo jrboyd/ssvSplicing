@@ -50,17 +50,31 @@ plot_splice_heatmap = function(splice_dt,
 
 
   set.seed(0)
-  id_lev = levels(ssvSignalClustering(sel_dtw, row_ = "id", column_ = "sample", fill_ = "fraction", facet_ = "", dcast_fill = 0, max_cols = Inf, nclust = 5)$id)
+  len_id = length(unique(sel_dtw$id))
+  if(len_id < 3){
+    id_lev = unique(sel_dtw$id)
+  }else{
+    id_lev = levels(ssvSignalClustering(sel_dtw, row_ = "id", column_ = "sample", fill_ = "fraction", facet_ = "", dcast_fill = 0, max_cols = Inf, nclust = 5)$id)
+  }
+
 
   set.seed(1)
-  sp_clust_dt = ssvSignalClustering(sel_dtw,
-                                    nclust = nclust,
-                                    row_ = "sample", column_ = "id",
-                                    fill_ = "fraction", facet_ = "",
-                                    dcast_fill = 0,
-                                    max_cols = Inf,
+  len_sample = length(unique(sel_dtw$sample))
+  if(len_sample < 3){
+    sp_clust_dt = copy(sel_dtw)
+    sp_clust_dt$cluster_id = factor(1)
+    sp_clust_dt$sample = factor(sp_clust_dt$sample)
+  }else{
+    sp_clust_dt = ssvSignalClustering(sel_dtw,
+                                      nclust = min(nclust, len_sample),
+                                      row_ = "sample", column_ = "id",
+                                      fill_ = "fraction", facet_ = "",
+                                      dcast_fill = 0,
+                                      max_cols = Inf,
 
-                                    max_rows = Inf)
+                                      max_rows = Inf)
+  }
+
   set.seed(NULL)
   sp_clust_dt$id = factor(sp_clust_dt$id, levels = id_lev)
 
@@ -91,6 +105,7 @@ plot_splice_heatmap = function(splice_dt,
 #' @param win_size
 #' @param prof_dt
 #' @param prof_dt.add
+#' @param apply_read_depth_normalization if TRUE, use an RPM pileup normalization in plot
 #'
 #' @return
 #' @export
@@ -112,10 +127,14 @@ plot_splice_heatmap = function(splice_dt,
 #'
 #' bam_qdt = data.table(file = bam_files)
 #' bam_qdt[, sample := sub(".Aligned.sorted.+", "", basename(file))]
+#' bam_qdt[, mapped_reads := seqsetvis::get_mapped_reads(file)]
 #'
 #' anno_dt = unique(sp_sj_dt.sel[, .(sample)])
 #' anno_dt$group = rep(c("a", "b"), each = 5)
 #' anno_dt$group2 = rep(c("c", "d"), 5)
+#' anno_dt = merge(anno_dt, bam_qdt[, .(sample, mapped_reads)])
+#'
+#' bam_qdt$mapped_reads = NULL
 #'
 #' plots = plot_view_pileup_and_splicing(sp_sj_dt.sel, bam_files[1:4], features$view_gr,
 #'   exons_to_show = features$goi_exon_dt[transcript_id == "ENST00000331340.8"])$plot
@@ -166,7 +185,7 @@ plot_view_pileup_and_splicing = function(splice_dt,
                                          prof_dt = NULL,
                                          prof_dt.add = NULL,
                                          show_bg = FALSE,
-                                         apply_read_depth_normalization = FALSE){
+                                         norm_VAR = NULL){
   if(is.character(bam_files)){
     bam_qdt = data.table(file= bam_files)
     bam_qdt[, sample := sub(".Aligned.sortedByCoord.out.bam", "", basename(file))]
@@ -177,7 +196,6 @@ plot_view_pileup_and_splicing = function(splice_dt,
     stop("bam_files must be character or data.frame")
   }
   stopifnot(file.exists(bam_qdt$file))
-  bam_qdt[, mapped_reads := seqsetvis::get_mapped_reads(file)]
 
   #try to sync sample names
   if(!all(splice_dt$sample %in% bam_qdt$sample)){
@@ -222,13 +240,11 @@ plot_view_pileup_and_splicing = function(splice_dt,
     message("Using provided direct read pileups.")
     prof_dt.raw = prof_dt
   }
-  prof_dt.raw[, y_rpm := y / mapped_reads * 1e6]
 
   if(is.null(prof_dt.add)){
     message("Retrieving split read pileups...")
     if(show_bg){
       prof_dt.add.raw = ssvFetchBam(bam_qdt, view_gr, win_size = win_size, return_data.table = TRUE, splice_strategy = "add", fragLens = NA)
-      prof_dt.add.raw[, y_rpm := y / mapped_reads * 1e6]
     }
     else{
       prof_dt.add.raw = NULL
@@ -236,16 +252,17 @@ plot_view_pileup_and_splicing = function(splice_dt,
   }else{
     message("Using provided split read pileups.")
     prof_dt.add.raw = prof_dt.add
-    prof_dt.add.raw[, y_rpm := y / mapped_reads * 1e6]
   }
 
 
-  prof_dt = prof_dt.raw[, .(y = sum(y), mapped_reads = sum(mapped_reads)), .(x, seqnames, start, end, id, strand, sample)]
+  prof_dt = prof_dt.raw[, .(y = sum(y)), .(x, seqnames, start, end, id, strand, sample)]
   if(is.null(prof_dt.add.raw)){
     prof_dt.add = NULL
   }else{
-    prof_dt.add = prof_dt.add.raw[, .(y = sum(y), mapped_reads = sum(mapped_reads)), .(x, seqnames, start, end, id, strand, sample)]
+    prof_dt.add = prof_dt.add.raw[, .(y = sum(y)), .(x, seqnames, start, end, id, strand, sample)]
   }
+
+  setnames(splice_dt, splice_height_var, "y")
 
   if(!is.null(pool_by)){
     new_sample_dt = unique(anno_dt[, c(pool_by), with = FALSE])
@@ -257,7 +274,15 @@ plot_view_pileup_and_splicing = function(splice_dt,
       }
       .dt = merge(.dt, .anno_dt, by = "sample")
       .pool_by = intersect(colnames(.dt), c("x", "seqnames", "start", "end", "id", "strand", pool_by))
-      .dt = .dt[, .(y_ = pool_FUN(get(y_var))), .pool_by]
+      if(!is.null(.dt$mapped_reads)){
+        message("using mapped reads to normalize")
+        .dt = .dt[, .(y_ = pool_FUN(get(y_var)), mapped_reads = sum(mapped_reads)), .pool_by]
+        .dt[, y_RPM := y_ / mapped_reads * 1e6]
+      }else if(!is.null(norm_VAR)){
+        .dt = .dt[, .(y_ = pool_FUN(get(y_var)*get(norm_VAR))), .pool_by]
+      }else{
+        .dt = .dt[, .(y_ = pool_FUN(get(y_var))), .pool_by]
+      }
       setnames(.dt, "y_", y_var)
       merge(.dt, .new_sample_dt, by = pool_by)
     }
@@ -265,29 +290,28 @@ plot_view_pileup_and_splicing = function(splice_dt,
     if(!is.null(prof_dt.add)){
       prof_dt.add = prep_attributes(prof_dt.add, anno_dt, new_sample_dt)
     }
-    splice_dt = prep_attributes(splice_dt, anno_dt, new_sample_dt, y_var = splice_height_var)
+    splice_dt = prep_attributes(splice_dt, anno_dt, new_sample_dt)
   }
 
-  browser()
   agg_prof_dt = prof_dt#prof_dt[, .(y = mean(y)), .(cluster_id, x, id, strand, start, end)]
   agg_prof_dt.add = prof_dt.add#prof_dt.add[, .(y = mean(y)), .(cluster_id, x, id, strand, start, end)]
-
-  # ggplot(agg_prof_dt, aes(x = x, y = y, color = strand)) +
-  #   geom_path() +
-  #   facet_grid(cluster_id~id, scales = "free_x")
 
   agg_prof_dt[, xgen := (start + end)/2]
   if(!is.null(agg_prof_dt.add)){
     agg_prof_dt.add[, xgen := (start + end)/2]
   }
 
+  height_var = "y"
+  if(!is.null(agg_prof_dt$y_RPM)){
+    height_var = "y_RPM"
+  }
 
   if(is.null(exons_to_show)){
     anno_dt_pile = NULL
   }else{
     anno_dt_pile = as.data.table(exons_to_show)[, .(start, end)]
     anno_dt_pile$m = ""
-    anno_rng = agg_prof_dt[, .(ymin = 0, ymax = max(y)), .(sample)]
+    anno_rng = agg_prof_dt[, .(ymin = 0, ymax = max(get(height_var))), .(sample)]
     anno_rng$m = ""
 
     anno_dt_pile = merge(anno_dt_pile, anno_rng, by = "m", allow.cartesian = TRUE)
@@ -315,49 +339,33 @@ plot_view_pileup_and_splicing = function(splice_dt,
                 color = "lightgray")
   }
   if(!is.null(agg_prof_dt.add)){
+    agg_prof_dt.add[, group := paste(id, strand)]
     p_pileup = p_pileup +
       geom_ribbon(data = agg_prof_dt.add,
-                  aes(x = xgen,
-                      ymin = 0,
-                      ymax = y,
-                      group = paste(id, strand)),
+                  aes_string(
+                    x = "xgen",
+                    ymin = 0,
+                    ymax = height_var,
+                    group = "group"),
                   alpha = .2,
                   fill = "dodgerblue2")
-  }
-  agg_prof_dt[, y_rpm := y / mapped_reads * 1e6]
-  if(apply_read_depth_normalization){
-    p_pileup = p_pileup +
-      geom_ribbon(data = agg_prof_dt,
-                  aes(x = xgen,
-                      ymin = 0,
-                      ymax = y_rpm,
-                      group = paste(id, strand)),
-                  alpha = 1,
-                  fill = "dodgerblue2") +
-      ggbio::geom_arch(GRanges(splice_dt),
-                       aes_string(height = splice_height_var),
-                       color = "black") +
-      facet_grid(sample~., scales = "free") +
-      theme(panel.background = element_blank()) +
-      labs(title = plot_title)
-  }else{
-    p_pileup = p_pileup +
-      geom_ribbon(data = agg_prof_dt,
-                  aes(x = xgen,
-                      ymin = 0,
-                      ymax = y,
-                      group = paste(id, strand)),
-                  alpha = 1,
-                  fill = "dodgerblue2") +
-      ggbio::geom_arch(GRanges(splice_dt),
-                       aes_string(height = splice_height_var),
-                       color = "black") +
-      facet_grid(sample~., scales = "free") +
-      theme(panel.background = element_blank()) +
-      labs(title = plot_title)
-  }
 
-
+  }
+  agg_prof_dt[, group := paste(id, strand)]
+  p_pileup = p_pileup +
+    geom_ribbon(data = agg_prof_dt,
+                aes_string(x = "xgen",
+                           ymin = 0,
+                           ymax = height_var,
+                           group = "paste(id, strand)"),
+                alpha = 1,
+                fill = "dodgerblue2") +
+    ggbio::geom_arch(GRanges(splice_dt),
+                     aes_string(height = height_var),
+                     color = "black") +
+    facet_grid(sample~., scales = "free") +
+    theme(panel.background = element_blank()) +
+    labs(title = plot_title, y = height_var)
   return(list(plot = p_pileup,
               prof_dt = prof_dt.raw,
               prof_dt.add = prof_dt.add.raw,
