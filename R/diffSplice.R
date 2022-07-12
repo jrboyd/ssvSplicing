@@ -32,6 +32,9 @@ suppa_joinFiles = function(input_files,
   if(all(grepl("bam$", input_files))){
     message("Finding suppa files for bam input...")
     input_files = sub(bam_suffix, ".salmon_quant", input_files)
+    if(any(!dir.exists(input_files))){
+      stop("\nCould not convert bam file paths to .salmon_quant directories.\nVerify .salmon_quant is present with each .bam file in the same directory or supply .salmon_quant paths directly.")
+    }
   }else{
     stop("NYI: currently only bam_files from VACC RNAseq pipeline are accepted.")
   }
