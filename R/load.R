@@ -98,7 +98,9 @@ load_sj = function(f, view_gr, file_ext = ".SJ.out.tab"){
   dt_sj[, annotation := decode_anno[annotation+1]]
 
   gr_sj = GRanges(dt_sj)
-  dt_sj = as.data.table(subsetByOverlaps(gr_sj, view_gr, ignore.strand = TRUE))
+  dt_sj = suppressWarnings({
+    as.data.table(subsetByOverlaps(gr_sj, view_gr, ignore.strand = TRUE))
+  })
   dt_sj$sample = sub(file_ext, "", basename(f))
   dt_sj
 }
@@ -154,7 +156,8 @@ find_bam_files = function(wd){
 #'
 #' load_splicing_from_SJ.out.tab_files(sj_files, features$view_gr)
 load_splicing_from_SJ.out.tab_files = function(sj_files, view_gr){
-  dt_sj = rbindlist(pbmcapply::pbmclapply(sj_files, load_sj, view_gr = view_gr))
+  res = pbmcapply::pbmclapply(sj_files, load_sj, view_gr = view_gr)
+  dt_sj = rbindlist(res)
   dt_sj[, id := paste(seqnames, start, end, strand)]
   dt_sj
 }
