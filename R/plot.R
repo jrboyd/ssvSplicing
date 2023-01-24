@@ -195,8 +195,12 @@ plot_view_pileup_and_splicing = function(splice_dt,
   }else{
     stop("bam_files must be character or data.frame")
   }
+  bam_qdt = as.data.table(bam_qdt)
+
   stopifnot(file.exists(bam_qdt$file))
 
+  bam_qdt = copy(bam_qdt)
+  splice_dt = copy(splice_dt)
   #try to sync sample names
   if(!all(splice_dt$sample %in% bam_qdt$sample)){
     splice_samples = unique(splice_dt$sample)

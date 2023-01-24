@@ -169,5 +169,5 @@ load_splicing_from_SJ.out.tab_files = function(sj_files, view_gr){
 
 
   dt_sj[, id := paste(seqnames, start, end, strand)]
-  dt_sj
+  dt_sj[]
 }
