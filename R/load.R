@@ -157,7 +157,17 @@ find_bam_files = function(wd){
 #' load_splicing_from_SJ.out.tab_files(sj_files, features$view_gr)
 load_splicing_from_SJ.out.tab_files = function(sj_files, view_gr){
   res = pbmcapply::pbmclapply(sj_files, load_sj, view_gr = view_gr)
-  dt_sj = rbindlist(res)
+  if(!is.null(names(sj_files))){
+    res = lapply(res, function(x){
+      x$sample = NULL
+      x
+    })
+    dt_sj = rbindlist(res, idcol = "sample")
+  }else{
+    dt_sj = rbindlist(res)
+  }
+
+
   dt_sj[, id := paste(seqnames, start, end, strand)]
   dt_sj
 }
